@@ -34,6 +34,9 @@ export const QuizSession: React.FC<QuizSessionProps> = ({
   const currentQ = questions[currentIndex];
   const progressPercent = Math.round(((currentIndex + 1) / questions.length) * 100);
 
+  const normalizeAnswer = (s: string | number) => 
+    String(s).trim().toLowerCase().replace(/[\$\s\\]/g, '');
+
   const handleSubmitChoice = (optionIdx: number) => {
     if (isSubmitted) return;
     setSelectedOption(optionIdx);
@@ -50,7 +53,7 @@ export const QuizSession: React.FC<QuizSessionProps> = ({
     e.preventDefault();
     if (isSubmitted || !clozeInput.trim()) return;
     setIsSubmitted(true);
-    const correct = clozeInput.trim().toLowerCase() === String(currentQ.correctAnswer).trim().toLowerCase();
+    const correct = normalizeAnswer(clozeInput) === normalizeAnswer(currentQ.correctAnswer);
     if (correct) {
       setScore(score + 1);
       confetti({ particleCount: 40, spread: 60, origin: { y: 0.8 } });
@@ -69,6 +72,8 @@ export const QuizSession: React.FC<QuizSessionProps> = ({
       onFinish(score, questions.length);
     }
   };
+
+  const isClozeCorrect = isSubmitted && normalizeAnswer(clozeInput) === normalizeAnswer(currentQ.correctAnswer);
 
   return (
     <div className="w-full max-w-2xl mx-auto flex flex-col">
@@ -154,13 +159,13 @@ export const QuizSession: React.FC<QuizSessionProps> = ({
                 disabled={isSubmitted}
                 onChange={(e) => setClozeInput(e.target.value)}
                 placeholder="请输入所填内容..."
-                className="flex-1 px-4 py-3 bg-slate-950 border border-slate-800 rounded-xl text-slate-100 placeholder-slate-500 focus:outline-none focus:border-indigo-500"
+                className="flex-1 px-4 py-3 bg-slate-950 border border-slate-800 rounded-xl text-slate-100 placeholder-slate-500 focus:outline-none focus:border-indigo-500 font-mono"
               />
               {!isSubmitted && (
                 <button
                   type="submit"
                   disabled={!clozeInput.trim()}
-                  className="px-6 py-3 bg-indigo-600 hover:bg-indigo-500 text-white font-medium rounded-xl transition-all"
+                  className="px-6 py-3 bg-indigo-600 hover:bg-indigo-500 text-white font-medium rounded-xl transition-all cursor-pointer"
                 >
                   确认答案
                 </button>
@@ -168,14 +173,18 @@ export const QuizSession: React.FC<QuizSessionProps> = ({
             </div>
             {isSubmitted && (
               <div className="text-sm font-medium">
-                {clozeInput.trim().toLowerCase() === String(currentQ.correctAnswer).trim().toLowerCase() ? (
+                {isClozeCorrect ? (
                   <span className="text-emerald-400 flex items-center gap-1.5">
                     <CheckCircle2 className="w-4 h-4" /> 回答完全正确！
                   </span>
                 ) : (
-                  <span className="text-rose-400 flex items-center gap-1.5">
-                    <XCircle className="w-4 h-4" /> 回答有误，标准答案是：<strong className="text-white underline">{String(currentQ.correctAnswer)}</strong>
-                  </span>
+                  <div className="text-rose-400 flex items-center gap-2 flex-wrap">
+                    <XCircle className="w-4 h-4 shrink-0" />
+                    <span>回答有误，标准答案是：</span>
+                    <strong className="text-white px-2 py-0.5 rounded bg-slate-800 border border-slate-700 font-semibold inline-flex items-center">
+                      <FormattedMathText content={String(currentQ.correctAnswer)} />
+                    </strong>
+                  </div>
                 )}
               </div>
             )}

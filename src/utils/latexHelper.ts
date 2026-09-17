@@ -2,19 +2,16 @@ import katex from 'katex';
 import 'katex/dist/katex.min.css';
 
 /**
- * Strips unnecessary backslash escapes from AI-generated or raw markdown text
+ * Strips unnecessary backslash escapes from markdown text
  * (e.g. 1\.2\.3 -> 1.2.3, \* -> *)
  */
 export function cleanMarkdownEscapes(text: string): string {
   if (!text) return '';
-  // Clean backslashes before punctuation like \. , \- , \_ when not inside a LaTeX command
   return text.replace(/\\([.\-_*#`])/g, '$1');
 }
 
 /**
- * Rock-solid Markdown & LaTeX renderer:
- * 1. Safely replaces LaTeX formulas directly with KaTeX HTML
- * 2. Formats markdown headings, bold text, lists, and inline code
+ * Universal & Safe Markdown & LaTeX HTML renderer
  */
 export function renderRichMarkdownAndLatex(rawText: string): string {
   if (!rawText) return '';
@@ -52,7 +49,20 @@ export function renderRichMarkdownAndLatex(rawText: string): string {
     }
   });
 
-  // 4. Format Markdown syntax line by line
+  // 4. Also handle bare LaTeX commands like \frac{1}{2}x^2 if user/LLM omitted the $ signs
+  if (/^\s*\\[a-zA-Z]+/.test(text) && !text.includes('<span class="katex">')) {
+    try {
+      const html = katex.renderToString(text.trim(), {
+        displayMode: false,
+        throwOnError: false,
+      });
+      return `<span class="inline-block mx-0.5 align-middle">${html}</span>`;
+    } catch {
+      // ignore
+    }
+  }
+
+  // 5. Format Markdown syntax line by line
   const lines = text.split('\n');
   const formattedLines = lines.map((line) => {
     let l = line;

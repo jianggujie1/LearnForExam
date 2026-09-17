@@ -10,16 +10,7 @@ jobs:
   release:
     permissions:
       contents: write
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - platform: 'macos-13' # Intel x86_64
-            target: 'x86_64-apple-darwin'
-          - platform: 'macos-14' # Apple Silicon M1/M2/M3/M4 (aarch64)
-            target: 'aarch64-apple-darwin'
-
-    runs-on: ${{ matrix.platform }}
+    runs-on: macos-latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -32,19 +23,19 @@ jobs:
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
         with:
-          targets: ${{ matrix.target }}
+          targets: x86_64-apple-darwin,aarch64-apple-darwin
 
       - name: Install Frontend Dependencies
         run: bun install
 
-      - name: Build Tauri App
+      - name: Build Tauri App (Apple Silicon & Intel)
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           tagName: ${{ github.ref_name }}
           releaseName: 'LearnForExam ${{ github.ref_name }}'
-          releaseBody: 'See the assets to download this release and install.'
-          releaseDraft: true
+          releaseBody: '期末速通 (LearnForExam) 桌面端安装包已发布！\n- **Intel 芯片 Mac**: 请下载 `_x64.dmg`\n- **Apple Silicon (M1/M2/M3/M4) Mac**: 请下载 `_aarch64.dmg`'
+          releaseDraft: false
           prerelease: false
-          args: --target ${{ matrix.target }}
+          args: --target universal-apple-darwin

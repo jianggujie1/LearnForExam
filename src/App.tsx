@@ -85,6 +85,14 @@ export function App() {
   };
 
   const handleLocateQuote = (quote: string) => {
+    if (quote) {
+      if (!activeCourse || (!activeCourse.rawNote.includes(quote) && !activeCourse.rawNote.toLowerCase().includes(quote.toLowerCase()))) {
+        const found = courses.find((c) => c.rawNote.includes(quote) || c.rawNote.toLowerCase().includes(quote.toLowerCase()));
+        if (found) {
+          setActiveCourseId(found.id);
+        }
+      }
+    }
     setHighlightQuote(quote);
     setIsSplitNoteOpen(true);
   };
@@ -317,6 +325,7 @@ export function App() {
           <ErrorNotebook
             errors={errorQuestions}
             onClearError={handleClearError}
+            onLocateQuote={handleLocateQuote}
           />
         )}
       </main>

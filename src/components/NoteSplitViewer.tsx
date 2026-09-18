@@ -45,11 +45,46 @@ function isHastParentNode(node: unknown): node is HastParentNode {
   );
 }
 
+function extractKatexAnnotation(node: unknown): string {
+  if (!node || typeof node !== 'object') return '';
+  const el = node as { tagName?: string; children?: unknown[] };
+  if (el.tagName === 'annotation' && Array.isArray(el.children) && el.children.length > 0) {
+    const firstChild = el.children[0] as { type?: string; value?: string };
+    if (firstChild && typeof firstChild.value === 'string') {
+      return firstChild.value;
+    }
+  }
+  if (Array.isArray(el.children)) {
+    for (const child of el.children) {
+      const res = extractKatexAnnotation(child);
+      if (res) return res;
+    }
+  }
+  return '';
+}
+
 /**
  * Recursively extracts plain text from an AST node (including KaTeX formulas and table cells).
+ * For KaTeX nodes, extracts the clean LaTeX formula source from <annotation> to prevent 3x text repetition
+ * from invisible MathML markup.
  */
 export function getNodeText(node: unknown): string {
-  if (!node) return '';
+  if (!node || typeof node !== 'object') return '';
+
+  const el = node as {
+    tagName?: string;
+    properties?: { className?: unknown };
+  };
+
+  const cls = el.properties?.className;
+  const classStr = Array.isArray(cls) ? cls.join(' ') : String(cls || '');
+  if (classStr.includes('katex')) {
+    const annotation = extractKatexAnnotation(node);
+    if (annotation) {
+      return ` $${annotation}$ `;
+    }
+  }
+
   if (isHastTextNode(node)) {
     return node.value;
   }
@@ -58,60 +93,142 @@ export function getNodeText(node: unknown): string {
   }
   return '';
 }
+
+export function normalizeForComparison(str: string): string {
+  return str
+    .toLowerCase()
+    .replace(/[\$\*\#\`\s\\.,;:!?，。！？（）()[\]{}"'\u201c\u201d\u2018\u2019{}—–−：；【】《》、“”‘’、·•\-+=\/|~^_—\u3000]/g, '')
+    .replace(/\\?x\s*to\s*0|x\s*→\s*0/g, 'xto0')
+    .replace(/\\?sim/g, 'sim')
+    .replace(/\\?pm|±/g, 'pm');
+}
+
+/**
+ * Calculates bidirectional similarity (Dice coefficient on character bigrams + substring bonus).
+ * Statistically evaluates match strength regardless of LaTeX syntax variations, punctuation, or typos.
+ */
+export function computeSimilarity(textA: string, textB: string): number {
+  const a = normalizeForComparison(textA);
+  const b = normalizeForComparison(textB);
+  if (!a || !b) return 0;
+  if (a === b) return 1.0;
+  if (a.includes(b)) return b.length / a.length + 0.5;
+  if (b.includes(a)) return a.length / b.length + 0.5;
+
+  const bigramsA = new Set<string>();
+  for (let i = 0; i < a.length - 1; i++) bigramsA.add(a.slice(i, i + 2));
+  const bigramsB = new Set<string>();
+  for (let i = 0; i < b.length - 1; i++) bigramsB.add(b.slice(i, i + 2));
+
+  let intersection = 0;
+  for (const bg of bigramsA) {
+    if (bigramsB.has(bg)) intersection++;
+  }
+  return (2 * intersection) / (bigramsA.size + bigramsB.size);
+}
+
+/**
+ * Unified Rehype plugin that evaluates the document AST globally.
+ * Picks the single best-matching block or contiguous section window (argmax),
+ * and marks ONLY that winning group with 'highlight-target'.
+ */
+export function rehypeBestMatchPlugin(options?: { target?: string }) {
+  const targetQuote = options?.target || '';
+  return (tree: any) => {
+    if (!targetQuote || !targetQuote.trim()) return;
+    const cleanTarget = targetQuote.trim();
+
+    const elements = tree.children?.filter((c: any) => c.type === 'element') || [];
+    if (elements.length === 0) return;
+
+    let bestScore = -1;
+    let bestNodes: any[] = [];
+
+    // 1. Single top-level element evaluation
+    for (let i = 0; i < elements.length; i++) {
+      const el = elements[i];
+      const text = getNodeText(el);
+      const score = computeSimilarity(text, cleanTarget);
+      if (score > bestScore) {
+        bestScore = score;
+        bestNodes = [el];
+      }
+    }
+
+    // 2. Sliding window of 2-4 contiguous elements (e.g. heading + formulas or clause + formula)
+    for (let i = 0; i < elements.length; i++) {
+      for (let len = 2; len <= 4 && i + len <= elements.length; len++) {
+        const windowEls = elements.slice(i, i + len);
+        // Do not cross heading boundaries
+        if (windowEls.slice(1).some((el: any) => ['h1', 'h2', 'h3', 'h4'].includes(el.tagName))) break;
+
+        const combinedText = windowEls.map(getNodeText).join(' ');
+        const score = computeSimilarity(combinedText, cleanTarget);
+        if (score > bestScore) {
+          bestScore = score;
+          bestNodes = windowEls;
+        }
+      }
+    }
+
+    // Mark the winning nodes with 'highlight-target'
+    if (bestScore >= 0.35 && bestNodes.length > 0) {
+      for (const node of bestNodes) {
+        if (!node.properties) node.properties = {};
+        const cls = node.properties.className;
+        const arr = Array.isArray(cls) ? [...cls] : cls ? [String(cls)] : [];
+        arr.push('highlight-target');
+        node.properties.className = arr;
+      }
+    }
+  };
+}
+
 /**
  * Checks if an AST node's text matches the highlight/search target.
- * Supports direct match, punctuation/space stripped comparison, and keyword prefix matching.
+ * Retained for backwards compatibility and unit testing.
  */
 export function isNodeMatched(node: unknown, target: string): boolean {
   if (!target || !node) return false;
+  const text = getNodeText(node);
+  if (!text) return false;
   const rawTarget = target.trim();
   if (!rawTarget) return false;
 
-  const nodeText = getNodeText(node);
-  if (!nodeText) return false;
+  if (text.toLowerCase().includes(rawTarget.toLowerCase())) return true;
 
-  // 1. Direct case-insensitive match
-  if (nodeText.toLowerCase().includes(rawTarget.toLowerCase())) {
-    return true;
+  const a = normalizeForComparison(text);
+  const b = normalizeForComparison(rawTarget);
+  if (!a || !b) return false;
+
+  // 1. Direct or normalized substring match
+  if (a === b || a.includes(b) || b.includes(a)) return true;
+
+  // 2. Substantial clause match (>= 6 chars)
+  if (a.length >= 6 && b.length >= 6 && b.includes(a)) return true;
+
+  // 3. Multi-item / segment match for bullet lists
+  if (rawTarget.includes(' - ') || rawTarget.includes('\n-') || rawTarget.includes('\n*')) {
+    const segments = rawTarget
+      .split(/\s*-\s*|\n[-*]\s*/)
+      .map((s) => normalizeForComparison(s))
+      .filter((s) => s.length >= 4);
+    if (segments.some((seg) => a.includes(seg) || (a.length >= 4 && seg.includes(a)))) {
+      return true;
+    }
   }
 
-  // 2. Normalized match (stripping markdown/latex characters, spaces, and punctuation)
-  const cleanTarget = rawTarget
-    .replace(/[\$\*\#\`\s\\.,;:!?，。！？（）()[\]{}"'\u201c\u201d\u2018\u2019]/g, '')
-    .toLowerCase();
-  const cleanNode = nodeText
-    .replace(/[\$\*\#\`\s\\.,;:!?，。！？（）()[\]{}"'\u201c\u201d\u2018\u2019]/g, '')
-    .toLowerCase();
-
-  if (!cleanTarget) return false;
-
-  if (cleanNode.includes(cleanTarget)) {
-    return true;
-  }
-
-  // 3. Bidirectional and prefix match for longer targets
-  if (cleanTarget.length > 5 && cleanNode.length > 5) {
-    if (cleanTarget.includes(cleanNode)) return true;
-    const prefix = cleanTarget.slice(0, Math.min(8, cleanTarget.length));
-    if (cleanNode.includes(prefix)) return true;
-  }
-
-  // 4. Ellipsis match for quoted excerpts (e.g. "Vite ... 迅速")
+  // 4. Ellipsis match
   if (rawTarget.includes('...') || rawTarget.includes('…')) {
     const parts = rawTarget
       .split(/\.{2,}|…/)
       .map((p) => p.trim())
       .filter((p) => p.length >= 2);
-    if (parts.length >= 2 && parts.every((p) => nodeText.toLowerCase().includes(p.toLowerCase()))) {
+    if (parts.length >= 2 && parts.every((p) => text.toLowerCase().includes(p.toLowerCase()))) {
       return true;
     }
   }
 
-  // 5. Multi-word space-separated keyword match (e.g. "React Vite")
-  const words = rawTarget.split(/\s+/).filter((w) => w.length >= 2);
-  if (words.length >= 2 && words.every((w) => nodeText.toLowerCase().includes(w.toLowerCase()))) {
-    return true;
-  }
   return false;
 }
 
@@ -145,14 +262,31 @@ export const NoteSplitViewer: React.FC<NoteSplitViewerProps> = ({
     return () => clearTimeout(timer);
   }, [target, isOpen, viewMode, normalizedNote]);
 
+  const rehypePlugins = useMemo<any[]>(() => {
+    return [
+      [rehypeKatex, { throwOnError: false, strict: false }],
+      [rehypeBestMatchPlugin, { target }],
+    ];
+  }, [target]);
+
   const components = useMemo<Components>(() => {
     const highlightCls =
       'highlight-target bg-amber-400/20 border-l-4 border-amber-400 pl-3 py-1 text-amber-100 shadow-lg ring-1 ring-amber-400/30 rounded-r-lg';
 
+    const isTargetHighlighted = (className: unknown, node?: unknown) => {
+      const classStr = Array.isArray(className) ? className.join(' ') : String(className || '');
+      if (classStr.includes('highlight-target')) return true;
+      if (searchTerm && searchTerm.trim().length >= 2) {
+        const text = getNodeText(node);
+        if (text.toLowerCase().includes(searchTerm.trim().toLowerCase())) return true;
+      }
+      return false;
+    };
+
     return {
       // Headings
       h1: ({ node, children, className = '', ...props }) => {
-        const isMatched = isNodeMatched(node, target);
+        const isMatched = isTargetHighlighted(className, node);
         return (
           <h1
             {...props}
@@ -165,7 +299,7 @@ export const NoteSplitViewer: React.FC<NoteSplitViewerProps> = ({
         );
       },
       h2: ({ node, children, className = '', ...props }) => {
-        const isMatched = isNodeMatched(node, target);
+        const isMatched = isTargetHighlighted(className, node);
         return (
           <h2
             {...props}
@@ -178,7 +312,7 @@ export const NoteSplitViewer: React.FC<NoteSplitViewerProps> = ({
         );
       },
       h3: ({ node, children, className = '', ...props }) => {
-        const isMatched = isNodeMatched(node, target);
+        const isMatched = isTargetHighlighted(className, node);
         return (
           <h3
             {...props}
@@ -191,7 +325,7 @@ export const NoteSplitViewer: React.FC<NoteSplitViewerProps> = ({
         );
       },
       h4: ({ node, children, className = '', ...props }) => {
-        const isMatched = isNodeMatched(node, target);
+        const isMatched = isTargetHighlighted(className, node);
         return (
           <h4
             {...props}
@@ -204,7 +338,7 @@ export const NoteSplitViewer: React.FC<NoteSplitViewerProps> = ({
         );
       },
       h5: ({ node, children, className = '', ...props }) => {
-        const isMatched = isNodeMatched(node, target);
+        const isMatched = isTargetHighlighted(className, node);
         return (
           <h5
             {...props}
@@ -217,7 +351,7 @@ export const NoteSplitViewer: React.FC<NoteSplitViewerProps> = ({
         );
       },
       h6: ({ node, children, className = '', ...props }) => {
-        const isMatched = isNodeMatched(node, target);
+        const isMatched = isTargetHighlighted(className, node);
         return (
           <h6
             {...props}
@@ -232,7 +366,7 @@ export const NoteSplitViewer: React.FC<NoteSplitViewerProps> = ({
 
       // Paragraphs & Quotes
       p: ({ node, children, className = '', ...props }) => {
-        const isMatched = isNodeMatched(node, target);
+        const isMatched = isTargetHighlighted(className, node);
         return (
           <p
             {...props}
@@ -245,7 +379,7 @@ export const NoteSplitViewer: React.FC<NoteSplitViewerProps> = ({
         );
       },
       blockquote: ({ node, children, className = '', ...props }) => {
-        const isMatched = isNodeMatched(node, target);
+        const isMatched = isTargetHighlighted(className, node);
         return (
           <blockquote
             {...props}
@@ -259,25 +393,39 @@ export const NoteSplitViewer: React.FC<NoteSplitViewerProps> = ({
       },
 
       // Lists
-      ul: ({ node, children, className = '', ...props }) => (
-        <ul {...props} className={`list-disc list-inside my-2 space-y-1 text-slate-300 pl-1 ${className}`}>
-          {children}
-        </ul>
-      ),
-      ol: ({ node, children, className = '', ...props }) => (
-        <ol {...props} className={`list-decimal list-inside my-2 space-y-1 text-slate-300 pl-1 ${className}`}>
-          {children}
-        </ol>
-      ),
+      ul: ({ node, children, className = '', ...props }) => {
+        const isMatched = isTargetHighlighted(className, node);
+        return (
+          <ul
+            {...props}
+            className={`list-disc list-inside my-2 space-y-1 text-slate-300 pl-1 ${
+              isMatched ? highlightCls : ''
+            } ${className}`}
+          >
+            {children}
+          </ul>
+        );
+      },
+      ol: ({ node, children, className = '', ...props }) => {
+        const isMatched = isTargetHighlighted(className, node);
+        return (
+          <ol
+            {...props}
+            className={`list-decimal list-inside my-2 space-y-1 text-slate-300 pl-1 ${
+              isMatched ? highlightCls : ''
+            } ${className}`}
+          >
+            {children}
+          </ol>
+        );
+      },
       li: ({ node, children, className = '', ...props }) => {
-        const isMatched = isNodeMatched(node, target);
+        const isMatched = isTargetHighlighted(className, node);
         return (
           <li
             {...props}
             className={`my-0.5 leading-relaxed ${
-              isMatched
-                ? 'highlight-target bg-amber-400/20 border-l-4 border-amber-400 pl-2.5 py-0.5 text-amber-100 shadow-lg ring-1 ring-amber-400/30 rounded-r-lg'
-                : ''
+              isMatched ? highlightCls : ''
             } ${className}`}
           >
             {children}
@@ -391,8 +539,7 @@ export const NoteSplitViewer: React.FC<NoteSplitViewerProps> = ({
       // Math display container highlight support
       span: ({ node, children, className = '', ...props }) => {
         const classStr = Array.isArray(className) ? className.join(' ') : String(className || '');
-        const isDisplay = classStr.includes('katex-display');
-        const isMatched = isDisplay ? isNodeMatched(node, target) : false;
+        const isMatched = isTargetHighlighted(classStr, node);
         return (
           <span
             {...props}
@@ -408,8 +555,7 @@ export const NoteSplitViewer: React.FC<NoteSplitViewerProps> = ({
       },
       div: ({ node, children, className = '', ...props }) => {
         const classStr = Array.isArray(className) ? className.join(' ') : String(className || '');
-        const isDisplay = classStr.includes('math-display') || classStr.includes('katex-display');
-        const isMatched = isDisplay ? isNodeMatched(node, target) : false;
+        const isMatched = isTargetHighlighted(classStr, node);
         return (
           <div
             {...props}
@@ -531,7 +677,7 @@ export const NoteSplitViewer: React.FC<NoteSplitViewerProps> = ({
             <div className="space-y-1">
               <ReactMarkdown
                 remarkPlugins={[remarkMath, remarkGfm]}
-                rehypePlugins={[[rehypeKatex, { throwOnError: false, strict: false }]]}
+                rehypePlugins={rehypePlugins}
                 components={components}
               >
                 {normalizedNote}

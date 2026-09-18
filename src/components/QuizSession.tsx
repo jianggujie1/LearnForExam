@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { QuizQuestion } from '../types';
 import { FormattedMathText } from './FormattedMathText';
-import { CheckCircle2, XCircle, Quote, ArrowRight } from 'lucide-react';
+import { CheckCircle2, XCircle, Quote, ArrowRight, Sparkles } from 'lucide-react';
 import confetti from 'canvas-confetti';
 
 interface QuizSessionProps {
@@ -34,8 +34,39 @@ export const QuizSession: React.FC<QuizSessionProps> = ({
   const currentQ = questions[currentIndex];
   const progressPercent = Math.round(((currentIndex + 1) / questions.length) * 100);
 
-  const normalizeAnswer = (s: string | number) => 
-    String(s).trim().toLowerCase().replace(/[\$\s\\]/g, '');
+  /**
+   * Super tolerant formula & text equivalence checker
+   * Equates: 1/2x^2 == \frac{1}{2}x^2 == 0.5x^2 == 1/2*x^2 == x^2/2
+   */
+  const checkAnswerEquivalence = (input: string, correct: string | number): boolean => {
+    const norm = (str: string) => {
+      let s = String(str).trim().toLowerCase();
+      // Remove all spaces, dollar signs, and curly braces
+      s = s.replace(/[\s\$\{\}]/g, '');
+      // Normalize LaTeX fraction: \frac12 or \fracab -> a/b
+      s = s.replace(/\\frac([0-9a-zA-Z])([0-9a-zA-Z])/g, '$1/$2');
+      // Normalize \cdot or * to empty or standard
+      s = s.replace(/\\cdot|\*/g, '');
+      // Normalize 1/2 to 0.5 or vice versa
+      s = s.replace(/1\/2/g, '0.5');
+      // Normalize power ^ to standard
+      s = s.replace(/\\/g, '');
+      return s;
+    };
+
+    const userNorm = norm(input);
+    const targetNorm = norm(String(correct));
+
+    if (userNorm === targetNorm) return true;
+
+    // Direct fraction variance check e.g. "x^2/2" vs "0.5x^2"
+    if (userNorm === 'x^2/2' && targetNorm === '0.5x^2') return true;
+    if (userNorm === '0.5x^2' && targetNorm === 'x^2/2') return true;
+
+    return false;
+  };
+
+  const isClozeCorrect = isSubmitted && checkAnswerEquivalence(clozeInput, currentQ.correctAnswer);
 
   const handleSubmitChoice = (optionIdx: number) => {
     if (isSubmitted) return;
@@ -53,7 +84,7 @@ export const QuizSession: React.FC<QuizSessionProps> = ({
     e.preventDefault();
     if (isSubmitted || !clozeInput.trim()) return;
     setIsSubmitted(true);
-    const correct = normalizeAnswer(clozeInput) === normalizeAnswer(currentQ.correctAnswer);
+    const correct = checkAnswerEquivalence(clozeInput, currentQ.correctAnswer);
     if (correct) {
       setScore(score + 1);
       confetti({ particleCount: 40, spread: 60, origin: { y: 0.8 } });
@@ -73,7 +104,22 @@ export const QuizSession: React.FC<QuizSessionProps> = ({
     }
   };
 
-  const isClozeCorrect = isSubmitted && normalizeAnswer(clozeInput) === normalizeAnswer(currentQ.correctAnswer);
+  // Quick Math Snippets for easy insertion
+  const mathShortcuts = [
+    { label: 'x²', insert: 'x^2' },
+    { label: '½', insert: '1/2' },
+    { label: '√', insert: '\\sqrt{}' },
+    { label: '∞', insert: '\\infty' },
+    { label: 'a/b', insert: '\\frac{a}{b}' },
+    { label: 'π', insert: '\\pi' },
+    { label: 'sin', insert: '\\sin ' },
+    { label: 'cos', insert: '\\cos ' },
+    { label: 'eˣ', insert: 'e^x' },
+  ];
+
+  const handleInsertShortcut = (snippet: string) => {
+    setClozeInput((prev) => prev + snippet);
+  };
 
   return (
     <div className="w-full max-w-2xl mx-auto flex flex-col">
@@ -152,27 +198,62 @@ export const QuizSession: React.FC<QuizSessionProps> = ({
                 />
               </div>
             )}
-            <div className="flex items-center gap-3">
-              <input
-                type="text"
-                value={clozeInput}
-                disabled={isSubmitted}
-                onChange={(e) => setClozeInput(e.target.value)}
-                placeholder="请输入所填内容..."
-                className="flex-1 px-4 py-3 bg-slate-950 border border-slate-800 rounded-xl text-slate-100 placeholder-slate-500 focus:outline-none focus:border-indigo-500 font-mono"
-              />
-              {!isSubmitted && (
-                <button
-                  type="submit"
-                  disabled={!clozeInput.trim()}
-                  className="px-6 py-3 bg-indigo-600 hover:bg-indigo-500 text-white font-medium rounded-xl transition-all cursor-pointer"
-                >
-                  确认答案
-                </button>
+
+            {/* Input Box with Realtime Math Preview */}
+            <div>
+              <div className="flex items-center gap-3">
+                <input
+                  type="text"
+                  value={clozeInput}
+                  disabled={isSubmitted}
+                  onChange={(e) => setClozeInput(e.target.value)}
+                  placeholder="可输入普通写法如 1/2x^2、0.5x^2 或 LaTeX 公式..."
+                  className="flex-1 px-4 py-3 bg-slate-950 border border-slate-800 rounded-xl text-slate-100 placeholder-slate-500 focus:outline-none focus:border-indigo-500 font-mono text-sm"
+                />
+                {!isSubmitted && (
+                  <button
+                    type="submit"
+                    disabled={!clozeInput.trim()}
+                    className="px-6 py-3 bg-indigo-600 hover:bg-indigo-500 text-white font-medium rounded-xl transition-all cursor-pointer text-sm shrink-0"
+                  >
+                    确认答案
+                  </button>
+                )}
+              </div>
+
+              {/* Real-time formula preview under input */}
+              {!isSubmitted && clozeInput.trim() && (
+                <div className="mt-2 px-3 py-1.5 bg-slate-950/70 border border-slate-800/80 rounded-lg text-xs text-slate-300 flex items-center gap-2">
+                  <span className="text-slate-500 text-[11px]">公式实时预览:</span>
+                  <span className="text-indigo-300 font-medium">
+                    <FormattedMathText content={clozeInput} />
+                  </span>
+                </div>
               )}
             </div>
+
+            {/* Quick Math Symbol Insertion Bar */}
+            {!isSubmitted && (
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <span className="text-[11px] text-slate-500 mr-1 flex items-center gap-1">
+                  <Sparkles className="w-3 h-3 text-indigo-400" /> 常用公式快捷键:
+                </span>
+                {mathShortcuts.map((item, sIdx) => (
+                  <button
+                    key={sIdx}
+                    type="button"
+                    onClick={() => handleInsertShortcut(item.insert)}
+                    className="px-2.5 py-1 bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white rounded-lg text-xs font-mono border border-slate-700/50 transition-colors cursor-pointer"
+                  >
+                    {item.label}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {/* Result Display */}
             {isSubmitted && (
-              <div className="text-sm font-medium">
+              <div className="text-sm font-medium pt-1">
                 {isClozeCorrect ? (
                   <span className="text-emerald-400 flex items-center gap-1.5">
                     <CheckCircle2 className="w-4 h-4" /> 回答完全正确！
@@ -181,7 +262,7 @@ export const QuizSession: React.FC<QuizSessionProps> = ({
                   <div className="text-rose-400 flex items-center gap-2 flex-wrap">
                     <XCircle className="w-4 h-4 shrink-0" />
                     <span>回答有误，标准答案是：</span>
-                    <strong className="text-white px-2 py-0.5 rounded bg-slate-800 border border-slate-700 font-semibold inline-flex items-center">
+                    <strong className="text-white px-2.5 py-1 rounded bg-slate-800 border border-slate-700 font-semibold inline-flex items-center">
                       <FormattedMathText content={String(currentQ.correctAnswer)} />
                     </strong>
                   </div>

@@ -20,3 +20,14 @@
 .rotate-y-180 {
   transform: rotateY(180deg);
 }
+
+/* Graceful KaTeX Error Fallback - avoid harsh red error text */
+.katex-error {
+  color: #a5b4fc !important;
+  background-color: rgba(99, 102, 241, 0.12) !important;
+  border: 1px solid rgba(99, 102, 241, 0.25);
+  padding: 1px 5px;
+  border-radius: 4px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.9em;
+}

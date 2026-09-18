@@ -84,12 +84,24 @@ export function App() {
     setCurrentView(mode);
   };
 
-  const handleLocateQuote = (quote: string) => {
-    if (quote) {
+  const handleLocateQuote = (quote: string, topicId?: string, courseId?: string) => {
+    if (courseId) {
+      if (courseId !== activeCourseId) {
+        setActiveCourseId(courseId);
+        saveActiveCourseId(courseId);
+      }
+    } else if (topicId) {
+      const found = courses.find((c) => c.topics.some((t) => t.id === topicId));
+      if (found && found.id !== activeCourseId) {
+        setActiveCourseId(found.id);
+        saveActiveCourseId(found.id);
+      }
+    } else if (quote) {
       if (!activeCourse || (!activeCourse.rawNote.includes(quote) && !activeCourse.rawNote.toLowerCase().includes(quote.toLowerCase()))) {
         const found = courses.find((c) => c.rawNote.includes(quote) || c.rawNote.toLowerCase().includes(quote.toLowerCase()));
-        if (found) {
+        if (found && found.id !== activeCourseId) {
           setActiveCourseId(found.id);
+          saveActiveCourseId(found.id);
         }
       }
     }
@@ -324,6 +336,7 @@ export function App() {
         {currentView === 'errors' && (
           <ErrorNotebook
             errors={errorQuestions}
+            courses={courses}
             onClearError={handleClearError}
             onLocateQuote={handleLocateQuote}
           />
@@ -334,6 +347,7 @@ export function App() {
       {activeCourse && (
         <NoteSplitViewer
           rawNote={activeCourse.rawNote}
+          courseTitle={activeCourse.title}
           highlightQuote={highlightQuote}
           isOpen={isSplitNoteOpen}
           onToggle={() => setIsSplitNoteOpen(!isSplitNoteOpen)}

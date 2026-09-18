@@ -1,16 +1,18 @@
 import React from 'react';
-import { QuizQuestion } from '../types';
+import { QuizQuestion, CourseSet } from '../types';
 import { FormattedMathText } from './FormattedMathText';
-import { AlertOctagon, CheckCircle2, Quote } from 'lucide-react';
+import { AlertOctagon, CheckCircle2, Quote, BookOpen } from 'lucide-react';
 
 interface ErrorNotebookProps {
   errors: QuizQuestion[];
+  courses?: CourseSet[];
   onClearError: (questionId: string) => void;
-  onLocateQuote?: (quote: string) => void;
+  onLocateQuote?: (quote: string, topicId?: string, courseId?: string) => void;
 }
 
 export const ErrorNotebook: React.FC<ErrorNotebookProps> = ({
   errors,
+  courses = [],
   onClearError,
   onLocateQuote,
 }) => {
@@ -41,25 +43,41 @@ export const ErrorNotebook: React.FC<ErrorNotebookProps> = ({
       </div>
 
       <div className="space-y-4">
-        {errors.map((q, idx) => (
-          <div
-            key={q.id}
-            className="bg-slate-900/90 border border-rose-500/20 rounded-2xl p-6 shadow-lg relative overflow-hidden"
-          >
-            <div className="flex items-center justify-between mb-3">
-              <span className="px-2.5 py-0.5 text-xs font-semibold rounded-full bg-rose-500/10 text-rose-400 border border-rose-500/20">
-                错题 #{idx + 1} · {q.type === 'single_choice' ? '单选题' : '挖空题'}
-              </span>
-              <button
-                type="button"
-                onClick={() => onClearError(q.id)}
-                className="flex items-center gap-1 text-xs text-slate-400 hover:text-emerald-400 transition-colors cursor-pointer"
-                title="已搞懂并移出错题本"
-              >
-                <CheckCircle2 className="w-4 h-4 text-slate-500 hover:text-emerald-400" />
-                标记已掌握
-              </button>
-            </div>
+        {errors.map((q, idx) => {
+          const relatedCourse = courses.find((c) => c.topics.some((t) => t.id === q.topicId));
+          const relatedTopic = relatedCourse?.topics.find((t) => t.id === q.topicId);
+
+          return (
+            <div
+              key={q.id}
+              className="bg-slate-900/90 border border-rose-500/20 rounded-2xl p-6 shadow-lg relative overflow-hidden"
+            >
+              <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="px-2.5 py-0.5 text-xs font-semibold rounded-full bg-rose-500/10 text-rose-400 border border-rose-500/20">
+                    错题 #{idx + 1} · {q.type === 'single_choice' ? '单选题' : '挖空题'}
+                  </span>
+                  {relatedCourse && (
+                    <span
+                      className="px-2 py-0.5 text-[11px] font-medium rounded-md bg-indigo-500/15 text-indigo-300 border border-indigo-500/30 flex items-center gap-1 max-w-[280px] truncate"
+                      title={`${relatedCourse.title} · ${relatedTopic?.title || ''}`}
+                    >
+                      <BookOpen className="w-3 h-3 text-indigo-400 shrink-0" />
+                      <span className="truncate">{relatedCourse.title}</span>
+                      {relatedTopic && <span className="text-indigo-400/80 truncate">/ {relatedTopic.title}</span>}
+                    </span>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => onClearError(q.id)}
+                  className="flex items-center gap-1 text-xs text-slate-400 hover:text-emerald-400 transition-colors cursor-pointer shrink-0"
+                  title="已搞懂并移出错题本"
+                >
+                  <CheckCircle2 className="w-4 h-4 text-slate-500 hover:text-emerald-400" />
+                  标记已掌握
+                </button>
+              </div>
 
             <div className="text-base font-medium text-slate-100 mb-4 leading-relaxed">
               <FormattedMathText content={q.prompt} />
@@ -98,20 +116,21 @@ export const ErrorNotebook: React.FC<ErrorNotebookProps> = ({
               <FormattedMathText content={q.explanation} />
             </div>
 
-            {q.quoteSource && (
-              <div className="mt-3">
-                <button
-                  type="button"
-                  onClick={() => onLocateQuote?.(q.quoteSource || '')}
-                  className="flex items-center gap-1.5 text-xs text-indigo-400 hover:text-indigo-300 font-medium py-1 px-2 rounded hover:bg-indigo-500/10 transition-colors cursor-pointer"
-                >
-                  <Quote className="w-3.5 h-3.5" />
-                  <span>在右侧分栏高亮原笔记出处 ➔</span>
-                </button>
-              </div>
-            )}
-          </div>
-        ))}
+              {q.quoteSource && (
+                <div className="mt-3">
+                  <button
+                    type="button"
+                    onClick={() => onLocateQuote?.(q.quoteSource || '', q.topicId, relatedCourse?.id)}
+                    className="flex items-center gap-1.5 text-xs text-indigo-400 hover:text-indigo-300 font-medium py-1 px-2 rounded hover:bg-indigo-500/10 transition-colors cursor-pointer"
+                  >
+                    <Quote className="w-3.5 h-3.5" />
+                    <span>在右侧分栏高亮原笔记出处 ➔</span>
+                  </button>
+                </div>
+              )}
+            </div>
+          );
+        })}
       </div>
     </div>
   );

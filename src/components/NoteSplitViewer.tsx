@@ -11,6 +11,7 @@ import { BookOpen, Search, Copy, Check, FileText, Code } from 'lucide-react';
 
 interface NoteSplitViewerProps {
   rawNote: string;
+  courseTitle?: string;
   highlightQuote?: string;
   isOpen: boolean;
   onToggle: () => void;
@@ -234,6 +235,7 @@ export function isNodeMatched(node: unknown, target: string): boolean {
 
 export const NoteSplitViewer: React.FC<NoteSplitViewerProps> = ({
   rawNote,
+  courseTitle,
   highlightQuote,
   isOpen,
   onToggle,
@@ -595,9 +597,11 @@ export const NoteSplitViewer: React.FC<NoteSplitViewerProps> = ({
     <aside className="w-[460px] border-l border-slate-800/80 bg-slate-900/80 backdrop-blur-2xl flex flex-col h-full shrink-0 shadow-2xl relative z-30 animate-in slide-in-from-right duration-300">
       {/* Header */}
       <div className="p-4 border-b border-slate-800 flex items-center justify-between">
-        <div className="flex items-center gap-2 text-slate-200 font-bold text-xs">
-          <BookOpen className="w-4 h-4 text-indigo-400" />
-          <span>原始笔记对照</span>
+        <div className="flex items-center gap-2 text-slate-200 font-bold text-xs min-w-0 max-w-[220px]">
+          <BookOpen className="w-4 h-4 text-indigo-400 shrink-0" />
+          <span className="truncate" title={courseTitle ? `笔记对照：${courseTitle}` : '原始笔记对照'}>
+            {courseTitle ? `笔记：${courseTitle}` : '原始笔记对照'}
+          </span>
         </div>
 
         {/* Toggle View */}

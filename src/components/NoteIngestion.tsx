@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
-import { UploadCloud, Sparkles, Loader2, BookOpen, ArrowRight, Clock, Terminal, Wand2, AlertTriangle, CheckCircle2, ChevronDown, ChevronUp, ShieldCheck } from 'lucide-react';
+import { UploadCloud, Sparkles, Loader2, BookOpen, ArrowRight, Clock, Terminal, Wand2, AlertTriangle, CheckCircle2, ChevronDown, ChevronUp, ShieldCheck, Trash2 } from 'lucide-react';
 import { inspectMarkdown, fixMarkdownIssues } from '../utils/markdownInspector';
 
 interface NoteIngestionProps {
@@ -68,8 +68,16 @@ export const NoteIngestion: React.FC<NoteIngestionProps> = ({
       }
     };
     reader.readAsText(file);
+    e.target.value = '';
   };
 
+  const handleClearNote = () => {
+    setNoteText('');
+    setTitle('');
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  };
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!noteText.trim() || isLoading) return;
@@ -132,14 +140,26 @@ export const NoteIngestion: React.FC<NoteIngestionProps> = ({
             <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider">
               粘贴笔记全文 (支持 Markdown / 纯文本 / LaTeX 公式)
             </label>
-            <button
-              type="button"
-              disabled={isLoading}
-              onClick={handleLoadSample}
-              className="text-xs text-indigo-400 hover:text-indigo-300 font-medium flex items-center gap-1 disabled:opacity-50 cursor-pointer"
-            >
-              <BookOpen className="w-3.5 h-3.5" /> 填入示例高数笔记
-            </button>
+            <div className="flex items-center gap-3">
+              {noteText.trim().length > 0 && (
+                <button
+                  type="button"
+                  disabled={isLoading}
+                  onClick={handleClearNote}
+                  className="text-xs text-rose-400 hover:text-rose-300 font-medium flex items-center gap-1 disabled:opacity-50 cursor-pointer transition-colors"
+                >
+                  <Trash2 className="w-3.5 h-3.5" /> 清空笔记内容
+                </button>
+              )}
+              <button
+                type="button"
+                disabled={isLoading}
+                onClick={handleLoadSample}
+                className="text-xs text-indigo-400 hover:text-indigo-300 font-medium flex items-center gap-1 disabled:opacity-50 cursor-pointer"
+              >
+                <BookOpen className="w-3.5 h-3.5" /> 填入示例高数笔记
+              </button>
+            </div>
           </div>
           <textarea
             value={noteText}

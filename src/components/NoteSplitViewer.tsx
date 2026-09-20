@@ -8,7 +8,7 @@ import rehypeKatex from 'rehype-katex';
 import 'katex/dist/katex.min.css';
 import { FormattedMathText } from './FormattedMathText';
 import { normalizeMarkdownAndMath } from '../utils/latexHelper';
-import { BookOpen, Search, Copy, Check, FileText, Code, ChevronUp, ChevronDown, X } from 'lucide-react';
+import { BookOpen, Search, Copy, Check, FileText, Code, ChevronUp, ChevronDown, X, Trash2 } from 'lucide-react';
 
 interface NoteSplitViewerProps {
   rawNote: string;
@@ -16,6 +16,7 @@ interface NoteSplitViewerProps {
   highlightQuote?: string;
   isOpen: boolean;
   onToggle: () => void;
+  onDelete?: () => void;
 }
 
 interface HastTextNode {
@@ -372,6 +373,7 @@ export const NoteSplitViewer: React.FC<NoteSplitViewerProps> = ({
   highlightQuote,
   isOpen,
   onToggle,
+  onDelete,
 }) => {
   const [copied, setCopied] = useState(false);
   const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('');
@@ -905,6 +907,16 @@ export const NoteSplitViewer: React.FC<NoteSplitViewerProps> = ({
           >
             {copied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
           </button>
+          {onDelete && (
+            <button
+              type="button"
+              onClick={onDelete}
+              title="删除此笔记"
+              className="p-1.5 text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 rounded-lg transition-colors cursor-pointer"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+            </button>
+          )}
           <button
             type="button"
             onClick={onToggle}

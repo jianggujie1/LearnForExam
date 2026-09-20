@@ -1,16 +1,19 @@
 import React from 'react';
 import { TopicCluster } from '../types';
-import { Layers, Sparkles, BookOpen, CheckCircle } from 'lucide-react';
+import { Layers, Sparkles, BookOpen, CheckCircle, Trash2 } from 'lucide-react';
 
 interface TopicRoadmapProps {
   topics: TopicCluster[];
   activeTopicId: string | null;
   onSelectTopic: (topicId: string, mode: 'flashcards' | 'quiz') => void;
+  onDeleteCourse?: () => void;
+  courseTitle?: string;
 }
 
 export const TopicRoadmap: React.FC<TopicRoadmapProps> = ({
   topics,
   onSelectTopic,
+  onDeleteCourse,
 }) => {
   if (topics.length === 0) {
     return (
@@ -32,6 +35,17 @@ export const TopicRoadmap: React.FC<TopicRoadmapProps> = ({
             笔记已自动聚合为 {topics.length} 个考点模块，建议先过闪卡建立记忆，再通过客观题自测巩固。
           </p>
         </div>
+        {onDeleteCourse && (
+          <button
+            type="button"
+            onClick={onDeleteCourse}
+            className="text-xs text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 border border-slate-800 hover:border-rose-500/30 px-3 py-1.5 rounded-xl flex items-center gap-1.5 transition-all cursor-pointer shrink-0"
+            title="删除此笔记专题"
+          >
+            <Trash2 className="w-3.5 h-3.5" />
+            <span>删除此笔记</span>
+          </button>
+        )}
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

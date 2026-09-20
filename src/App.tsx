@@ -6,7 +6,9 @@ import {
   loadSettings, 
   saveSettings,
   loadActiveCourseId,
-  saveActiveCourseId
+  saveActiveCourseId,
+  loadSavedErrors,
+  saveErrors
 } from './services/storageService';
 import { generateCourseSetFromNote } from './services/aiService';
 import { NoteIngestion } from './components/NoteIngestion';
@@ -16,6 +18,7 @@ import { QuizSession } from './components/QuizSession';
 import { ErrorNotebook } from './components/ErrorNotebook';
 import { SettingsModal } from './components/SettingsModal';
 import { NoteSplitViewer, computeSimilarity } from './components/NoteSplitViewer';
+import { DeleteConfirmModal } from './components/DeleteConfirmModal';
 import { 
   GraduationCap, 
   Settings as SettingsIcon, 
@@ -38,16 +41,18 @@ export function App() {
   const [selectedTopicId, setSelectedTopicId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-  const [errorQuestions, setErrorQuestions] = useState<QuizQuestion[]>([]);
+  const [errorQuestions, setErrorQuestions] = useState<QuizQuestion[]>(() => loadSavedErrors());
   
   // Split Screen Note viewer state
   const [isSplitNoteOpen, setIsSplitNoteOpen] = useState(false);
   const [highlightQuote, setHighlightQuote] = useState<string>('');
-
+  const [courseToDelete, setCourseToDelete] = useState<CourseSet | null>(null);
   // Load initialized state
   useEffect(() => {
     const saved = loadSavedCourses();
     setCourses(saved);
+    const savedErrors = loadSavedErrors();
+    setErrorQuestions(savedErrors);
     const lastActive = loadActiveCourseId();
     if (lastActive && saved.some((c) => c.id === lastActive)) {
       setActiveCourseId(lastActive);
@@ -129,34 +134,72 @@ export function App() {
     saveCourses(updated);
   };
 
-  const handleRecordAnswer = (questionId: string, _answer: string | number, isCorrect: boolean) => {
-    if (!isCorrect && activeCourse) {
-      for (const topic of activeCourse.topics) {
-        const q = topic.quizzes.find((item) => item.id === questionId);
-        if (q && !errorQuestions.some((e) => e.id === questionId)) {
-          setErrorQuestions((prev) => [q, ...prev]);
+  const handleRecordAnswer = (questionId: string, answer: string | number, isCorrect: boolean) => {
+    if (!isCorrect) {
+      const searchCourses = activeCourse ? [activeCourse] : courses;
+      for (const course of searchCourses) {
+        for (const topic of course.topics) {
+          const q = topic.quizzes.find((item) => item.id === questionId);
+          if (q) {
+            setErrorQuestions((prev) => {
+              if (prev.some((e) => e.id === questionId)) return prev;
+              const updatedQuestion: QuizQuestion = {
+                ...q,
+                userAnswer: answer,
+                isCorrect: false,
+              };
+              const updated = [updatedQuestion, ...prev];
+              saveErrors(updated);
+              return updated;
+            });
+            return;
+          }
         }
       }
     }
   };
 
   const handleClearError = (questionId: string) => {
-    setErrorQuestions((prev) => prev.filter((q) => q.id !== questionId));
+    setErrorQuestions((prev) => {
+      const updated = prev.filter((q) => q.id !== questionId);
+      saveErrors(updated);
+      return updated;
+    });
   };
 
-  const handleDeleteCourse = (courseId: string, e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (confirm('确定要删除此复习专题吗？')) {
-      const updated = courses.filter((c) => c.id !== courseId);
-      setCourses(updated);
-      saveCourses(updated);
-      if (activeCourseId === courseId) {
-        const next = updated[0]?.id || null;
-        setActiveCourseId(next);
-        saveActiveCourseId(next);
-        if (!next) setCurrentView('ingest');
+  const handleRequestDeleteCourse = (course: CourseSet, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    setCourseToDelete(course);
+  };
+
+  const handleConfirmDelete = () => {
+    if (!courseToDelete) return;
+    const targetId = courseToDelete.id;
+    const updated = courses.filter((c) => c.id !== targetId);
+    setCourses(updated);
+    saveCourses(updated);
+
+    // Clean up associated error questions
+    const topicIds = new Set(courseToDelete.topics.map((t) => t.id));
+    const quizIds = new Set(courseToDelete.topics.flatMap((t) => t.quizzes.map((q) => q.id)));
+    setErrorQuestions((prev) => {
+      const cleaned = prev.filter(
+        (q) => !quizIds.has(q.id) && !(q.topicId && topicIds.has(q.topicId))
+      );
+      saveErrors(cleaned);
+      return cleaned;
+    });
+
+    if (activeCourseId === targetId) {
+      const next = updated[0]?.id || null;
+      setActiveCourseId(next);
+      saveActiveCourseId(next);
+      if (!next) {
+        setCurrentView('ingest');
+        setIsSplitNoteOpen(false);
       }
     }
+    setCourseToDelete(null);
   };
 
   const currentTopic = activeCourse?.topics.find((t) => t.id === selectedTopicId) || activeCourse?.topics[0];
@@ -249,8 +292,10 @@ export function App() {
                   <span className="truncate">{course.title}</span>
                   <button
                     type="button"
-                    onClick={(e) => handleDeleteCourse(course.id, e)}
-                    className="opacity-0 group-hover:opacity-100 text-slate-500 hover:text-rose-400 p-1 rounded transition-opacity"
+                    onClick={(e) => handleRequestDeleteCourse(course, e)}
+                    className="opacity-0 group-hover:opacity-100 text-slate-500 hover:text-rose-400 hover:bg-rose-500/10 p-1.5 rounded-lg transition-all"
+                    title={`删除「${course.title}」`}
+                    aria-label={`删除「${course.title}」`}
                   >
                     <Trash2 className="w-3.5 h-3.5" />
                   </button>
@@ -316,9 +361,10 @@ export function App() {
             topics={activeCourse.topics}
             activeTopicId={selectedTopicId}
             onSelectTopic={handleSelectTopic}
+            onDeleteCourse={() => handleRequestDeleteCourse(activeCourse)}
+            courseTitle={activeCourse.title}
           />
         )}
-
         {currentView === 'flashcards' && currentTopic && (
           <FlashcardReview
             cards={currentTopic.flashcards}
@@ -356,6 +402,7 @@ export function App() {
           highlightQuote={highlightQuote}
           isOpen={isSplitNoteOpen}
           onToggle={() => setIsSplitNoteOpen(!isSplitNoteOpen)}
+          onDelete={() => handleRequestDeleteCourse(activeCourse)}
         />
       )}
 
@@ -368,6 +415,14 @@ export function App() {
           setSettings(newSettings);
           saveSettings(newSettings);
         }}
+      />
+
+      {/* Delete Confirmation Modal */}
+      <DeleteConfirmModal
+        isOpen={Boolean(courseToDelete)}
+        courseTitle={courseToDelete?.title || ''}
+        onClose={() => setCourseToDelete(null)}
+        onConfirm={handleConfirmDelete}
       />
     </div>
   );

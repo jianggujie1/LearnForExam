@@ -1,9 +1,10 @@
-import { CourseSet, AISettings } from '../types';
+import { CourseSet, AISettings, QuizQuestion } from '../types';
 import { DEFAULT_AI_SETTINGS } from '../services/aiService';
 
 const STORAGE_KEY_COURSES = 'learn_for_exam_courses';
 const STORAGE_KEY_SETTINGS = 'learn_for_exam_settings';
 const STORAGE_KEY_ACTIVE_COURSE = 'learn_for_exam_active_id';
+const STORAGE_KEY_ERRORS = 'learn_for_exam_errors';
 
 export function loadSavedCourses(): CourseSet[] {
   try {
@@ -45,5 +46,23 @@ export function saveActiveCourseId(id: string | null): void {
     localStorage.setItem(STORAGE_KEY_ACTIVE_COURSE, id);
   } else {
     localStorage.removeItem(STORAGE_KEY_ACTIVE_COURSE);
+  }
+}
+
+export function loadSavedErrors(): QuizQuestion[] {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY_ERRORS);
+    return raw ? JSON.parse(raw) : [];
+  } catch (e) {
+    console.error('Failed to load error questions', e);
+    return [];
+  }
+}
+
+export function saveErrors(errors: QuizQuestion[]): void {
+  try {
+    localStorage.setItem(STORAGE_KEY_ERRORS, JSON.stringify(errors));
+  } catch (e) {
+    console.error('Failed to save error questions', e);
   }
 }

@@ -262,7 +262,7 @@ export const QuizSession: React.FC<QuizSessionProps> = ({
                   <div className="text-rose-400 flex items-center gap-2 flex-wrap">
                     <XCircle className="w-4 h-4 shrink-0" />
                     <span>回答有误，标准答案是：</span>
-                    <strong className="text-white px-2.5 py-1 rounded bg-slate-800 border border-slate-700 font-semibold inline-flex items-center">
+                    <strong className="standard-answer-badge px-2.5 py-1 rounded font-semibold inline-flex items-center text-slate-100 bg-slate-800 border border-slate-700 shadow-sm">
                       <FormattedMathText content={String(currentQ.correctAnswer)} />
                     </strong>
                   </div>

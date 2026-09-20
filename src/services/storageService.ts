@@ -66,3 +66,111 @@ export function saveErrors(errors: QuizQuestion[]): void {
     console.error('Failed to save error questions', e);
   }
 }
+
+const STORAGE_KEY_THEME_MODE = 'learn_for_exam_theme_mode';
+
+export type ThemeMode = 'system' | 'light' | 'dark';
+export type ResolvedTheme = 'light' | 'dark';
+
+export function getSystemTheme(): ResolvedTheme {
+  if (typeof window !== 'undefined' && window.matchMedia) {
+    return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+  }
+  return 'dark';
+}
+
+export function loadThemeMode(): ThemeMode {
+  try {
+    const saved = localStorage.getItem(STORAGE_KEY_THEME_MODE) || localStorage.getItem('learn_for_exam_theme');
+    if (saved === 'system' || saved === 'light' || saved === 'dark') {
+      return saved;
+    }
+  } catch (e) {
+    // fallback
+  }
+  return 'system';
+}
+
+export function saveThemeMode(mode: ThemeMode): void {
+  try {
+    localStorage.setItem(STORAGE_KEY_THEME_MODE, mode);
+  } catch (e) {
+    console.error('Failed to save theme mode', e);
+  }
+}
+
+const STORAGE_KEY_SIDEBAR_WIDTH = 'learn_for_exam_sidebar_width';
+const STORAGE_KEY_SIDEBAR_COLLAPSED = 'learn_for_exam_sidebar_collapsed';
+const STORAGE_KEY_SPLIT_NOTE_WIDTH = 'learn_for_exam_split_note_width';
+
+export const DEFAULT_SIDEBAR_WIDTH = 256;
+export const MIN_SIDEBAR_WIDTH = 200;
+export const MAX_SIDEBAR_WIDTH = 380;
+export const COLLAPSED_SIDEBAR_WIDTH = 68;
+
+export const DEFAULT_SPLIT_NOTE_WIDTH = 380;
+export const MIN_SPLIT_NOTE_WIDTH = 300;
+export const MAX_SPLIT_NOTE_WIDTH = 600;
+
+export function loadSidebarWidth(): number {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY_SIDEBAR_WIDTH);
+    if (raw) {
+      const parsed = parseInt(raw, 10);
+      if (!isNaN(parsed) && parsed >= MIN_SIDEBAR_WIDTH && parsed <= MAX_SIDEBAR_WIDTH) {
+        return parsed;
+      }
+    }
+  } catch (e) {
+    // fallback to default
+  }
+  return DEFAULT_SIDEBAR_WIDTH;
+}
+
+export function saveSidebarWidth(width: number): void {
+  try {
+    localStorage.setItem(STORAGE_KEY_SIDEBAR_WIDTH, String(Math.round(width)));
+  } catch (e) {
+    console.error('Failed to save sidebar width', e);
+  }
+}
+
+export function loadSidebarCollapsed(): boolean {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY_SIDEBAR_COLLAPSED);
+    return raw === 'true';
+  } catch (e) {
+    return false;
+  }
+}
+
+export function saveSidebarCollapsed(collapsed: boolean): void {
+  try {
+    localStorage.setItem(STORAGE_KEY_SIDEBAR_COLLAPSED, String(collapsed));
+  } catch (e) {
+    console.error('Failed to save sidebar collapsed state', e);
+  }
+}
+
+export function loadSplitNoteWidth(): number {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY_SPLIT_NOTE_WIDTH);
+    if (raw) {
+      const parsed = parseInt(raw, 10);
+      if (!isNaN(parsed) && parsed >= MIN_SPLIT_NOTE_WIDTH && parsed <= MAX_SPLIT_NOTE_WIDTH) {
+        return parsed;
+      }
+    }
+  } catch (e) {
+    // fallback
+  }
+  return DEFAULT_SPLIT_NOTE_WIDTH;
+}
+
+export function saveSplitNoteWidth(width: number): void {
+  try {
+    localStorage.setItem(STORAGE_KEY_SPLIT_NOTE_WIDTH, String(Math.round(width)));
+  } catch (e) {
+    console.error('Failed to save split note width', e);
+  }
+}

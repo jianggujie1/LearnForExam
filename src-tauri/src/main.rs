@@ -2,5 +2,5 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 fn main() {
-    app_temp_lib::run()
+    learn_for_exam_lib::run()
 }

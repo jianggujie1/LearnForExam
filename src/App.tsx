@@ -15,7 +15,7 @@ import { FlashcardReview } from './components/FlashcardReview';
 import { QuizSession } from './components/QuizSession';
 import { ErrorNotebook } from './components/ErrorNotebook';
 import { SettingsModal } from './components/SettingsModal';
-import { NoteSplitViewer } from './components/NoteSplitViewer';
+import { NoteSplitViewer, computeSimilarity } from './components/NoteSplitViewer';
 import { 
   GraduationCap, 
   Settings as SettingsIcon, 
@@ -85,26 +85,30 @@ export function App() {
   };
 
   const handleLocateQuote = (quote: string, topicId?: string, courseId?: string) => {
-    if (courseId) {
-      if (courseId !== activeCourseId) {
-        setActiveCourseId(courseId);
-        saveActiveCourseId(courseId);
-      }
-    } else if (topicId) {
-      const found = courses.find((c) => c.topics.some((t) => t.id === topicId));
-      if (found && found.id !== activeCourseId) {
-        setActiveCourseId(found.id);
-        saveActiveCourseId(found.id);
-      }
-    } else if (quote) {
-      if (!activeCourse || (!activeCourse.rawNote.includes(quote) && !activeCourse.rawNote.toLowerCase().includes(quote.toLowerCase()))) {
-        const found = courses.find((c) => c.rawNote.includes(quote) || c.rawNote.toLowerCase().includes(quote.toLowerCase()));
-        if (found && found.id !== activeCourseId) {
-          setActiveCourseId(found.id);
-          saveActiveCourseId(found.id);
+    let targetCourseId = courseId;
+    if (!targetCourseId && topicId) {
+      targetCourseId = courses.find((c) => c.topics.some((t) => t.id === topicId))?.id;
+    }
+    if (!targetCourseId && quote) {
+      let bestScore = -1;
+      let bestCourseId: string | undefined;
+      for (const c of courses) {
+        const score = computeSimilarity(c.rawNote, quote);
+        if (score > bestScore) {
+          bestScore = score;
+          bestCourseId = c.id;
         }
       }
+      if (bestScore >= 0.25) {
+        targetCourseId = bestCourseId;
+      }
     }
+
+    if (targetCourseId && targetCourseId !== activeCourseId) {
+      setActiveCourseId(targetCourseId);
+      saveActiveCourseId(targetCourseId);
+    }
+
     setHighlightQuote(quote);
     setIsSplitNoteOpen(true);
   };
@@ -346,6 +350,7 @@ export function App() {
       {/* Right Side: Split-screen Note Viewer */}
       {activeCourse && (
         <NoteSplitViewer
+          key={activeCourse.id}
           rawNote={activeCourse.rawNote}
           courseTitle={activeCourse.title}
           highlightQuote={highlightQuote}

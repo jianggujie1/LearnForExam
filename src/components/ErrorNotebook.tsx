@@ -44,9 +44,17 @@ export const ErrorNotebook: React.FC<ErrorNotebookProps> = ({
 
       <div className="space-y-4">
         {errors.map((q, idx) => {
-          const relatedCourse = courses.find((c) => c.topics.some((t) => t.id === q.topicId));
-          const relatedTopic = relatedCourse?.topics.find((t) => t.id === q.topicId);
+          let relatedCourse = courses.find((c) =>
+            c.topics.some((t) => t.quizzes.some((quiz) => quiz.id === q.id) || (q.topicId && t.id === q.topicId))
+          );
+          let relatedTopic = relatedCourse?.topics.find((t) =>
+            t.quizzes.some((quiz) => quiz.id === q.id) || (q.topicId && t.id === q.topicId)
+          );
 
+          if (!relatedCourse && q.quoteSource) {
+            relatedCourse = courses.find((c) => c.rawNote.includes(q.quoteSource!));
+            relatedTopic = relatedCourse?.topics[0];
+          }
           return (
             <div
               key={q.id}

@@ -250,18 +250,29 @@ export const NoteSplitViewer: React.FC<NoteSplitViewerProps> = ({
   // Normalize note content (cleaning escapes, standardizing LaTeX delimiters)
   const normalizedNote = normalizeMarkdownAndMath(rawNote || '');
 
-  // Smooth scroll to highlight target
+  // Smooth scroll to highlight target with retry polling
   useEffect(() => {
     if (!target || !isOpen || viewMode !== 'rendered') return;
 
-    const timer = setTimeout(() => {
+    let attempts = 0;
+    const maxAttempts = 6;
+    let timerId: number | undefined;
+
+    const tryScroll = () => {
+      attempts++;
       const targetElem = scrollContainerRef.current?.querySelector('.highlight-target');
       if (targetElem) {
         targetElem.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      } else if (attempts < maxAttempts) {
+        timerId = setTimeout(tryScroll, 100);
       }
-    }, 120);
+    };
 
-    return () => clearTimeout(timer);
+    timerId = setTimeout(tryScroll, 80);
+
+    return () => {
+      if (timerId) clearTimeout(timerId);
+    };
   }, [target, isOpen, viewMode, normalizedNote]);
 
   const rehypePlugins = useMemo<any[]>(() => {

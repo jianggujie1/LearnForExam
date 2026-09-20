@@ -164,12 +164,29 @@ export async function generateCourseSetFromNote(
 
   try {
     const parsed = JSON.parse(cleanJsonStr);
+    const topics = (parsed.topics || []).map((t: any, tIdx: number) => {
+      const topicId = t.id || `topic-${tIdx + 1}`;
+      return {
+        ...t,
+        id: topicId,
+        flashcards: (t.flashcards || []).map((f: any, fIdx: number) => ({
+          ...f,
+          id: f.id || `fc-${tIdx + 1}-${fIdx + 1}`,
+          topicId,
+        })),
+        quizzes: (t.quizzes || []).map((q: any, qIdx: number) => ({
+          ...q,
+          id: q.id || `qz-${tIdx + 1}-${qIdx + 1}`,
+          topicId,
+        })),
+      };
+    });
     return {
       id: `course-${Date.now()}`,
       title: parsed.title || courseTitle || '期末复习专题',
       rawNote,
       createdAt: Date.now(),
-      topics: parsed.topics || [],
+      topics,
     };
   } catch (parseErr) {
     console.error('Failed to parse AI output:', cleanJsonStr);

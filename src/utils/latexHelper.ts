@@ -7,7 +7,11 @@ import 'katex/dist/katex.min.css';
  */
 export function cleanMarkdownEscapes(text: string): string {
   if (!text) return '';
-  return text.replace(/\\([.\-_*#`])/g, '$1');
+  return text
+    .replace(/\\([#\-+*|>!_`])/g, '$1')
+    .replace(/\\([\u4e00-\u9fa5\u3000-\u303f\uff00-\uffef])/g, '$1')
+    .replace(/\\(["'])/g, '$1')
+    .replace(/\\\.([ \t\n\d])/g, '.$1');
 }
 /**
  * Decodes common HTML and XML character entities that frequently appear in LLM output,
@@ -69,6 +73,11 @@ export function normalizeMarkdownAndMath(rawText: string): string {
   // 1. Decode HTML entities early and normalize line endings CRLF -> LF
   let text = decodeHtmlEntities(rawText).replace(/\r\n/g, '\n');
 
+  // 1.1 Strip BOM and zero-width characters, normalize NBSP
+  text = text.replace(/\uFEFF/g, '');
+  text = text.replace(/[\u200B\u200C\u200D]/g, '');
+  text = text.replace(/\u00A0/g, ' ');
+
   // 2. Protect code blocks (both fenced ```...``` and inline `...`)
   const codeBlocks: string[] = [];
   text = text.replace(/(```[\s\S]*?```|`[^`\n]+`)/g, (match) => {
@@ -77,23 +86,22 @@ export function normalizeMarkdownAndMath(rawText: string): string {
     return placeholder;
   });
 
-  // 3. Strip unnecessary escapes outside code blocks and fix unseparated headings
-  text = cleanMarkdownEscapes(text);
-  text = text.replace(/---\s*(#+)/g, '\n\n---\n\n$1');
+  // 2.1 Unescape AI-escaped math delimiters (\$ -> $) outside code blocks
+  text = text.replace(/\\(\$+)/g, '$1');
 
-  // 4. Normalize LaTeX inline delimiters \( ... \) -> $ ... $
+  // 3. Normalize LaTeX inline delimiters \( ... \) -> $ ... $
   text = text.replace(/\\\(([\s\S]+?)\\\)/g, (_match, math) => `$${math.trim()}$`);
 
-  // 5. Normalize LaTeX block delimiters \[ ... \] -> $$ ... $$
+  // 4. Normalize LaTeX block delimiters \[ ... \] -> $$ ... $$
   text = text.replace(/\\\[([\s\S]+?)\\\]/g, (_match, math) => `\n\n$$\n${math.trim()}\n$$\n\n`);
 
-  // 6. Normalize multiline single-dollar blocks to $$ ... $$ BEFORE touching any LaTeX environments
+  // 5. Normalize multiline single-dollar blocks to $$ ... $$ BEFORE touching any LaTeX environments
   text = text.replace(
     /(?:^|\n)[ \t]*\$[ \t]*\n([\s\S]+?)\n[ \t]*\$[ \t]*(?=\n|$)/g,
     (_match, math) => `\n\n$$\n${math.trim()}\n$$\n\n`
   );
 
-  // 7. Protect all standard $$ ... $$ math blocks into placeholders
+  // 6. Protect all standard $$ ... $$ math blocks into placeholders
   const mathBlocks: string[] = [];
   text = text.replace(/\$\$([\s\S]+?)\$\$/g, (_match, math) => {
     const placeholder = `@@@MATHBLOCK_${mathBlocks.length}@@@`;
@@ -101,7 +109,7 @@ export function normalizeMarkdownAndMath(rawText: string): string {
     return placeholder;
   });
 
-  // 8. Wrap any remaining bare or half-delimited LaTeX environments not yet enclosed in math blocks
+  // 7. Wrap any remaining bare or half-delimited LaTeX environments not yet enclosed in math blocks
   text = text.replace(
     /(?:\${1,2})?[ \t]*\\begin\{\s*(aligned|matrix|pmatrix|bmatrix|vmatrix|cases|equation\*?|gather\*?|split)\s*\}([\s\S]+?)\\end\{\s*\1\s*\}[ \t]*(?:\${1,2})?/g,
     (_match, env, body) => {
@@ -110,6 +118,20 @@ export function normalizeMarkdownAndMath(rawText: string): string {
       return placeholder;
     }
   );
+
+  // 8. Strip unnecessary escapes outside code blocks and math blocks, and fix unseparated headings
+  text = cleanMarkdownEscapes(text);
+  text = text.replace(/---\s*(#+)/g, '\n\n---\n\n$1');
+
+  // 8.1 Fix missing spaces in headings and lists outside code blocks
+  text = text.replace(/^([ \t]*)(#{1,6})([^#\s\n][^\n]*)$/gm, '$1$2 $3');
+  text = text.replace(/^([ \t]*)([-*+])([^\s\n\-*+][^\n]*)$/gm, '$1$2 $3');
+  text = text.replace(/^([ \t]*)(\d+\.)([^\s\n][^\n]*)$/gm, '$1$2 $3');
+
+  // 8.2 Convert Obsidian syntax
+  text = text.replace(/\[\[([^\]|]+)\|([^\]]+)\]\]/g, '$2');
+  text = text.replace(/\[\[([^\]]+)\]\]/g, '$1');
+  text = text.replace(/==([^=\n]+)==/g, '**$1**');
 
   // 9. Sanitize inline math $ ... $
   text = text.replace(/\$([^\$\n]+?)\$/g, (_match, math) => `$${sanitizeMathFormula(math)}$`);

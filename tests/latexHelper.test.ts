@@ -105,6 +105,26 @@ Here is inline code: \`$x = 1$\`.
     expect(normalized).toContain('$x+1$');
     expect(normalized).toContain('$$\nE=mc^2\n$$');
   });
+
+  test('normalizes AI escapes, missing spaces, Obsidian syntax, and invisible characters', () => {
+    const raw = `\uFEFF\\# 高等数学考点\n\\- 重要极限：\\$\\lim_{x \\to 0} \\frac{\\sin x}{x} = 1\\$\n#导数定义\n-切线斜率\n1.极限存在\n参考 [[高等数学|高数上册]] 与 ==核心公式==\u200B\u00A0`;
+    const normalized = normalizeMarkdownAndMath(raw);
+
+    // BOM & zero-width & NBSP handled
+    expect(normalized).not.toContain('\uFEFF');
+    expect(normalized).not.toContain('\u200B');
+    // AI escapes & heading/list space fixed
+    expect(normalized).toContain('# 高等数学考点');
+    expect(normalized).toContain('- 重要极限：');
+    expect(normalized).toContain('# 导数定义');
+    expect(normalized).toContain('- 切线斜率');
+    expect(normalized).toContain('1. 极限存在');
+    // Math formula preserved
+    expect(normalized).toContain('$\\lim_{x \\to 0} \\frac{\\sin x}{x} = 1$');
+    // Obsidian syntax converted
+    expect(normalized).toContain('高数上册');
+    expect(normalized).toContain('**核心公式**');
+  });
 });
 
 describe('NoteSplitViewer isNodeMatched', () => {

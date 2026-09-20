@@ -1,5 +1,6 @@
-import React, { useState, useRef, useEffect } from 'react';
-import { UploadCloud, Sparkles, Loader2, BookOpen, ArrowRight, Clock, Terminal } from 'lucide-react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
+import { UploadCloud, Sparkles, Loader2, BookOpen, ArrowRight, Clock, Terminal, Wand2, AlertTriangle, CheckCircle2, ChevronDown, ChevronUp, ShieldCheck } from 'lucide-react';
+import { inspectMarkdown, fixMarkdownIssues } from '../utils/markdownInspector';
 
 interface NoteIngestionProps {
   onGenerate: (title: string, noteText: string, onStreamChunk?: (chunk: string) => void) => Promise<void>;
@@ -14,9 +15,21 @@ export const NoteIngestion: React.FC<NoteIngestionProps> = ({
   const [noteText, setNoteText] = useState('');
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [streamLog, setStreamLog] = useState('');
+  const [showDetails, setShowDetails] = useState(false);
+  const [fixToast, setFixToast] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const streamLogRef = useRef<HTMLDivElement>(null);
 
+  const inspection = useMemo(() => {
+    return inspectMarkdown(noteText);
+  }, [noteText]);
+
+  const handleAutoFix = () => {
+    const { fixedText, fixedCount } = fixMarkdownIssues(noteText);
+    setNoteText(fixedText);
+    setFixToast(`已自动规范化并修复 ${fixedCount} 处格式隐患！`);
+    setTimeout(() => setFixToast(null), 4000);
+  };
   // Timer for loading state
   useEffect(() => {
     let timer: any;
@@ -161,17 +174,129 @@ export const NoteIngestion: React.FC<NoteIngestionProps> = ({
             {noteText.length} 字
           </span>
         </div>
+        {/* Markdown Import Inspection & Normalization Panel */}
+        {noteText.trim().length > 0 && (
+          <div className="bg-slate-950/70 border border-slate-800/80 rounded-xl p-4 space-y-3 transition-all">
+            <div className="flex flex-wrap items-center justify-between gap-2.5">
+              <div className="flex items-center gap-2">
+                {inspection.status === 'clean' ? (
+                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                    <ShieldCheck className="w-3.5 h-3.5" />
+                    格式规范优良 (100分) · 适合精准引用锚定
+                  </span>
+                ) : inspection.status === 'warning' ? (
+                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-amber-500/10 text-amber-400 border border-amber-500/20">
+                    <AlertTriangle className="w-3.5 h-3.5" />
+                    健康分: {inspection.score} · 发现 {inspection.totalFixableCount} 处格式隐患
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-rose-500/10 text-rose-400 border border-rose-500/20">
+                    <AlertTriangle className="w-3.5 h-3.5" />
+                    健康分: {inspection.score} · 存在破坏渲染与引用的格式缺陷
+                  </span>
+                )}
+              </div>
+
+              <div className="flex items-center gap-2">
+                {inspection.canAutoFix && (
+                  <button
+                    type="button"
+                    onClick={handleAutoFix}
+                    className="cursor-pointer inline-flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white text-xs font-semibold rounded-lg shadow-md shadow-indigo-500/20 transition-all active:scale-95"
+                  >
+                    <Wand2 className="w-3.5 h-3.5" />
+                    一键规范化与修复
+                  </button>
+                )}
+
+                {inspection.issues.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setShowDetails((prev) => !prev)}
+                    className="cursor-pointer inline-flex items-center gap-1 px-2.5 py-1.5 text-xs text-slate-400 hover:text-slate-200 hover:bg-slate-800/60 rounded-lg transition-colors"
+                  >
+                    <span>详情</span>
+                    {showDetails ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* Stats bar */}
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-slate-400 font-mono pt-0.5 border-t border-slate-800/40">
+              <span>字数: <strong className="text-slate-200">{inspection.stats.charCount}</strong></span>
+              <span>标题: <strong className="text-slate-200">{inspection.stats.headingCount}</strong> 个</span>
+              <span>列表: <strong className="text-slate-200">{inspection.stats.listCount}</strong> 项</span>
+              <span>公式: <strong className="text-slate-200">{inspection.stats.mathBlockCount}</strong> 处</span>
+              <span>代码块: <strong className="text-slate-200">{inspection.stats.codeBlockCount}</strong> 个</span>
+            </div>
+
+            {/* Success toast after fix */}
+            {fixToast && (
+              <div className="flex items-center gap-2 p-2.5 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-300 text-xs animate-in fade-in duration-200">
+                <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-400" />
+                <span>{fixToast}</span>
+              </div>
+            )}
+
+            {/* Collapsible Issue list */}
+            {showDetails && inspection.issues.length > 0 && (
+              <div className="space-y-2 pt-1">
+                {inspection.issues.map((issue) => (
+                  <div
+                    key={issue.id}
+                    className="p-2.5 rounded-lg bg-slate-900/90 border border-slate-800 text-xs space-y-1"
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="font-semibold text-slate-200 flex items-center gap-1.5">
+                        {issue.severity === 'error' ? (
+                          <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-rose-500/20 text-rose-400">
+                            渲染风险
+                          </span>
+                        ) : issue.severity === 'warning' ? (
+                          <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-500/20 text-amber-400">
+                            引用失效风险
+                          </span>
+                        ) : (
+                          <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-indigo-500/20 text-indigo-400">
+                            格式优化
+                          </span>
+                        )}
+                        {issue.title}
+                      </span>
+                      <span className="text-[11px] text-slate-400 font-mono">
+                        {issue.count} 处
+                      </span>
+                    </div>
+                    <p className="text-slate-400 text-[11px] leading-relaxed">
+                      {issue.description}
+                    </p>
+                    {issue.examples.length > 0 && (
+                      <div className="mt-1 p-1.5 bg-slate-950 rounded font-mono text-[10px] text-slate-300 overflow-x-auto space-y-0.5">
+                        {issue.examples.map((ex, idx) => (
+                          <div key={idx} className="truncate">
+                            • {ex}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Streaming Real-time output terminal view */}
         {isLoading && (
           <div className="space-y-2 animate-in fade-in duration-300">
-            <div className="flex items-center justify-between text-xs text-indigo-300 font-medium">
-              <span className="flex items-center gap-1.5">
-                <Loader2 className="w-4 h-4 animate-spin text-indigo-400" />
-                AI 正在实时提炼生成知识点与考题中...
+            <div className="flex items-center justify-between text-xs text-indigo-300 font-medium gap-3">
+              <span className="flex items-center gap-1.5 truncate min-w-0">
+                <Loader2 className="w-4 h-4 animate-spin text-indigo-400 shrink-0" />
+                <span className="truncate">AI 正在实时提炼生成知识点与考题中...</span>
               </span>
-              <span className="flex items-center gap-1 text-slate-400">
-                <Clock className="w-3 h-3" /> 已耗时 {elapsedSeconds} 秒
+              <span className="flex items-center gap-1 text-slate-400 shrink-0 font-mono">
+                <Clock className="w-3.5 h-3.5" /> 已耗时 {elapsedSeconds} 秒
               </span>
             </div>
 
@@ -198,7 +323,7 @@ export const NoteIngestion: React.FC<NoteIngestionProps> = ({
           {isLoading ? (
             <>
               <Loader2 className="w-5 h-5 animate-spin" />
-              正在实时生成题库中 ({elapsedSeconds}s)...
+              正在实时生成题库中...
             </>
           ) : (
             <>

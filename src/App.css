@@ -46,3 +46,12 @@
   box-shadow: 0 0 0 2px #818cf8;
   background-color: rgba(251, 191, 36, 0.35);
 }
+
+/* KaTeX 0.16 & 0.18 class compatibility bridge (prevents rlap/vbox/thinbox misalignment) */
+.katex .vbox { align-items: baseline; display: inline-flex; flex-direction: column; }
+.katex .thinbox { display: inline-flex; flex-direction: row; max-width: 0; width: 0; }
+.katex .clap, .katex .llap, .katex .rlap { position: relative; width: 0; }
+.katex .clap > .inner, .katex .llap > .inner, .katex .rlap > .inner { position: absolute; }
+.katex .clap > .fix, .katex .llap > .fix, .katex .rlap > .fix { display: inline-block; }
+.katex .llap > .inner { right: 0; }
+.katex .clap > .inner, .katex .rlap > .inner { left: 0; }

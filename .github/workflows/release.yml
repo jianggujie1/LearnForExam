@@ -3,7 +3,7 @@ name: Release Build
 on:
   push:
     tags:
-      - 'v*'
+      - "v*"
   workflow_dispatch:
 
 jobs:
@@ -34,8 +34,11 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           tagName: ${{ github.ref_name }}
-          releaseName: 'LearnForExam ${{ github.ref_name }}'
-          releaseBody: '期末速通 (LearnForExam) 桌面端安装包已发布！\n- **Intel 芯片 Mac**: 请下载 `_x64.dmg`\n- **Apple Silicon (M1/M2/M3/M4) Mac**: 请下载 `_aarch64.dmg`'
+          releaseName: "LearnForExam ${{ github.ref_name }}"
+          releaseBody: |
+            期末速通 (LearnForExam) 桌面端安装包已发布！
+            - **Intel 芯片 Mac**: 请下载 `_x64.dmg`
+            - **Apple Silicon (M1/M2/M3/M4) Mac**: 请下载 `_aarch64.dmg`
           releaseDraft: false
           prerelease: false
           args: --target universal-apple-darwin

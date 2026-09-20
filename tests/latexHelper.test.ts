@@ -314,4 +314,20 @@ $$
     expect(combinedText).not.toContain('1.3.1');
     expect(combinedText).not.toContain('1.4');
   });
+
+  test('produces no highlights when target is empty', () => {
+    const note = `# 标题\n一段普通的笔记文本。\n$$x^2 + y^2 = 1$$`;
+    const processor = unified()
+      .use(remarkParse)
+      .use(remarkMath)
+      .use(remarkRehype)
+      .use(rehypeKatex, { throwOnError: false, strict: false })
+      .use(rehypeBestMatchPlugin, { target: '' });
+
+    const hast = processor.runSync(processor.parse(note)) as unknown as {
+      children: Array<{ properties?: { className?: string[] } }>;
+    };
+    const highlighted = hast.children.filter((c) => c.properties?.className?.includes('highlight-target'));
+    expect(highlighted.length).toBe(0);
+  });
 });

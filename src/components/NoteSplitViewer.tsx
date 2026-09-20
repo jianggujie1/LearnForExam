@@ -1,13 +1,14 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import ReactMarkdown from 'react-markdown';
 import type { Components } from 'react-markdown';
+import type { PluggableList } from 'unified';
 import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
 import 'katex/dist/katex.min.css';
 import { FormattedMathText } from './FormattedMathText';
 import { normalizeMarkdownAndMath } from '../utils/latexHelper';
-import { BookOpen, Search, Copy, Check, FileText, Code } from 'lucide-react';
+import { BookOpen, Search, Copy, Check, FileText, Code, ChevronUp, ChevronDown, X } from 'lucide-react';
 
 interface NoteSplitViewerProps {
   rawNote: string;
@@ -233,6 +234,138 @@ export function isNodeMatched(node: unknown, target: string): boolean {
   return false;
 }
 
+interface NoteSearchBarProps {
+  onSearchChange: (query: string) => void;
+  searchQuery: string;
+  matchCount: number;
+  activeMatchIndex: number;
+  onNextMatch: () => void;
+  onPrevMatch: () => void;
+  onClear: () => void;
+}
+
+const NoteSearchBar: React.FC<NoteSearchBarProps> = React.memo(({
+  onSearchChange,
+  searchQuery,
+  matchCount,
+  activeMatchIndex,
+  onNextMatch,
+  onPrevMatch,
+  onClear,
+}) => {
+  const [searchTerm, setSearchTerm] = useState('');
+  const isComposingRef = useRef(false);
+  const debounceTimerRef = useRef<number | undefined>(undefined);
+
+  const triggerDebouncedSearch = (val: string) => {
+    clearTimeout(debounceTimerRef.current);
+    debounceTimerRef.current = window.setTimeout(() => {
+      onSearchChange(val.trim());
+    }, 250);
+  };
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = e.target.value;
+    setSearchTerm(val);
+    if (!isComposingRef.current) {
+      triggerDebouncedSearch(val);
+    }
+  };
+
+  const handleCompositionStart = () => {
+    isComposingRef.current = true;
+  };
+
+  const handleCompositionEnd = (e: React.CompositionEvent<HTMLInputElement>) => {
+    isComposingRef.current = false;
+    const val = e.currentTarget.value;
+    setSearchTerm(val);
+    triggerDebouncedSearch(val);
+  };
+
+  const handleClear = () => {
+    clearTimeout(debounceTimerRef.current);
+    setSearchTerm('');
+    onClear();
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      if (isComposingRef.current) return;
+      e.preventDefault();
+      if (e.shiftKey) {
+        onPrevMatch();
+      } else {
+        onNextMatch();
+      }
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      handleClear();
+    }
+  };
+
+  useEffect(() => {
+    return () => {
+      clearTimeout(debounceTimerRef.current);
+    };
+  }, []);
+
+  return (
+    <div className="p-3 border-b border-slate-800/60">
+      <div className="relative flex items-center">
+        <Search className="w-3.5 h-3.5 absolute left-3 top-2.5 text-slate-500 pointer-events-none" />
+        <input
+          type="text"
+          value={searchTerm}
+          onChange={handleChange}
+          onCompositionStart={handleCompositionStart}
+          onCompositionEnd={handleCompositionEnd}
+          onKeyDown={handleKeyDown}
+          placeholder="在原笔记中快速查找..."
+          className="w-full pl-8 pr-24 py-1.5 bg-slate-950/80 border border-slate-800 rounded-lg text-xs text-slate-200 placeholder-slate-600 focus:outline-none focus:border-indigo-500"
+        />
+        <div className="absolute right-2 flex items-center gap-1">
+          {searchQuery && (
+            <span className="text-[10px] text-slate-400 select-none px-1">
+              {matchCount > 0 ? `${activeMatchIndex + 1}/${matchCount}` : '无结果'}
+            </span>
+          )}
+          {searchQuery && matchCount > 0 && (
+            <div className="flex items-center">
+              <button
+                type="button"
+                onClick={onPrevMatch}
+                title="上一个匹配 (Shift+Enter)"
+                className="p-0.5 text-slate-400 hover:text-slate-200 rounded hover:bg-slate-800 transition-colors cursor-pointer"
+              >
+                <ChevronUp className="w-3.5 h-3.5" />
+              </button>
+              <button
+                type="button"
+                onClick={onNextMatch}
+                title="下一个匹配 (Enter)"
+                className="p-0.5 text-slate-400 hover:text-slate-200 rounded hover:bg-slate-800 transition-colors cursor-pointer"
+              >
+                <ChevronDown className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          )}
+          {searchTerm.length > 0 && (
+            <button
+              type="button"
+              onClick={handleClear}
+              title="清除搜索 (Esc)"
+              className="p-0.5 text-slate-400 hover:text-slate-200 rounded hover:bg-slate-800 transition-colors cursor-pointer"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+});
+
 export const NoteSplitViewer: React.FC<NoteSplitViewerProps> = ({
   rawNote,
   courseTitle,
@@ -241,18 +374,28 @@ export const NoteSplitViewer: React.FC<NoteSplitViewerProps> = ({
   onToggle,
 }) => {
   const [copied, setCopied] = useState(false);
-  const [searchTerm, setSearchTerm] = useState('');
+  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('');
+  const [matchCount, setMatchCount] = useState(0);
+  const [activeMatchIndex, setActiveMatchIndex] = useState(0);
   const [viewMode, setViewMode] = useState<'rendered' | 'raw'>('rendered');
   const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const matchesRef = useRef<HTMLElement[]>([]);
 
-  const target = (highlightQuote || searchTerm || '').trim();
+  const quoteTarget = (highlightQuote || '').trim();
 
   // Normalize note content (cleaning escapes, standardizing LaTeX delimiters)
-  const normalizedNote = normalizeMarkdownAndMath(rawNote || '');
+  const normalizedNote = useMemo(() => normalizeMarkdownAndMath(rawNote || ''), [rawNote]);
+  const rawLines = useMemo(() => (rawNote || '').split('\n'), [rawNote]);
 
-  // Smooth scroll to highlight target with retry polling
+  const remarkPlugins = useMemo(() => [remarkMath, remarkGfm], []);
+  const rehypePlugins = useMemo<PluggableList>(() => {
+    return [
+      [rehypeKatex, { throwOnError: false, strict: false }],
+      [rehypeBestMatchPlugin, { target: quoteTarget }],
+    ];
+  }, [quoteTarget]);
   useEffect(() => {
-    if (!target || !isOpen || viewMode !== 'rendered') return;
+    if (!quoteTarget || !isOpen || viewMode !== 'rendered') return;
 
     let attempts = 0;
     const maxAttempts = 6;
@@ -264,42 +407,138 @@ export const NoteSplitViewer: React.FC<NoteSplitViewerProps> = ({
       if (targetElem) {
         targetElem.scrollIntoView({ behavior: 'smooth', block: 'center' });
       } else if (attempts < maxAttempts) {
-        timerId = setTimeout(tryScroll, 100);
+        timerId = window.setTimeout(tryScroll, 100);
       }
     };
 
-    timerId = setTimeout(tryScroll, 80);
+    timerId = window.setTimeout(tryScroll, 80);
 
     return () => {
-      if (timerId) clearTimeout(timerId);
+      clearTimeout(timerId);
     };
-  }, [target, isOpen, viewMode, normalizedNote]);
+  }, [quoteTarget, isOpen, viewMode, normalizedNote]);
 
-  const rehypePlugins = useMemo<any[]>(() => {
-    return [
-      [rehypeKatex, { throwOnError: false, strict: false }],
-      [rehypeBestMatchPlugin, { target }],
-    ];
-  }, [target]);
+
+  // High-performance DOM-level search highlighting & navigation
+  useEffect(() => {
+    // Clear previous search highlights
+    const prevMatches = scrollContainerRef.current?.querySelectorAll(
+      '.note-search-match, .note-search-match-active'
+    );
+    prevMatches?.forEach((el) => {
+      el.classList.remove('note-search-match', 'note-search-match-active');
+    });
+
+    if (!isOpen || !debouncedSearchQuery || !scrollContainerRef.current) {
+      matchesRef.current = [];
+      setMatchCount(0);
+      setActiveMatchIndex(0);
+      return;
+    }
+
+    const query = debouncedSearchQuery.toLowerCase();
+    const matchingElements: HTMLElement[] = [];
+
+    if (viewMode === 'rendered') {
+      const candidates = Array.from(
+        scrollContainerRef.current.querySelectorAll<HTMLElement>(
+          'p, h1, h2, h3, h4, h5, h6, li, blockquote, tr, pre'
+        )
+      );
+      const matchingCandidates = candidates.filter((el) =>
+        (el.textContent || '').toLowerCase().includes(query)
+      );
+      for (const el of matchingCandidates) {
+        const containsOtherMatch = matchingCandidates.some(
+          (other) => other !== el && el.contains(other)
+        );
+        if (!containsOtherMatch) {
+          matchingElements.push(el);
+        }
+      }
+    } else {
+      // Raw mode: match individual lines
+      const lines = Array.from(
+        scrollContainerRef.current.querySelectorAll<HTMLElement>('.note-raw-line')
+      );
+      if (lines.length > 0) {
+        for (const line of lines) {
+          if ((line.textContent || '').toLowerCase().includes(query)) {
+            matchingElements.push(line);
+          }
+        }
+      } else {
+        const pre = scrollContainerRef.current.querySelector<HTMLElement>('pre');
+        if (pre && (pre.textContent || '').toLowerCase().includes(query)) {
+          matchingElements.push(pre);
+        }
+      }
+    }
+
+    matchesRef.current = matchingElements;
+    setMatchCount(matchingElements.length);
+    setActiveMatchIndex(0);
+
+    if (matchingElements.length > 0) {
+      matchingElements.forEach((el) => el.classList.add('note-search-match'));
+      matchingElements[0].classList.add('note-search-match-active');
+      matchingElements[0].scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+  }, [debouncedSearchQuery, viewMode, isOpen, normalizedNote]);
+
+  const handleSearchChange = useCallback((query: string) => {
+    setDebouncedSearchQuery(query);
+  }, []);
+
+  const handleNextMatch = useCallback(() => {
+    const matches = matchesRef.current;
+    if (matches.length === 0) return;
+    const nextIndex = (activeMatchIndex + 1) % matches.length;
+
+    matches[activeMatchIndex]?.classList.remove('note-search-match-active');
+    matches[nextIndex]?.classList.add('note-search-match-active');
+    matches[nextIndex]?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    setActiveMatchIndex(nextIndex);
+  }, [activeMatchIndex]);
+
+  const handlePrevMatch = useCallback(() => {
+    const matches = matchesRef.current;
+    if (matches.length === 0) return;
+    const prevIndex = (activeMatchIndex - 1 + matches.length) % matches.length;
+
+    matches[activeMatchIndex]?.classList.remove('note-search-match-active');
+    matches[prevIndex]?.classList.add('note-search-match-active');
+    matches[prevIndex]?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    setActiveMatchIndex(prevIndex);
+  }, [activeMatchIndex]);
+
+  const handleClearSearch = useCallback(() => {
+    setDebouncedSearchQuery('');
+    setMatchCount(0);
+    setActiveMatchIndex(0);
+    matchesRef.current = [];
+    const prevMatches = scrollContainerRef.current?.querySelectorAll(
+      '.note-search-match, .note-search-match-active'
+    );
+    prevMatches?.forEach((el) => {
+      el.classList.remove('note-search-match', 'note-search-match-active');
+    });
+  }, []);
+
 
   const components = useMemo<Components>(() => {
     const highlightCls =
       'highlight-target bg-amber-400/20 border-l-4 border-amber-400 pl-3 py-1 text-amber-100 shadow-lg ring-1 ring-amber-400/30 rounded-r-lg';
 
-    const isTargetHighlighted = (className: unknown, node?: unknown) => {
+    const isTargetHighlighted = (className: unknown) => {
       const classStr = Array.isArray(className) ? className.join(' ') : String(className || '');
-      if (classStr.includes('highlight-target')) return true;
-      if (searchTerm && searchTerm.trim().length >= 2) {
-        const text = getNodeText(node);
-        if (text.toLowerCase().includes(searchTerm.trim().toLowerCase())) return true;
-      }
-      return false;
+      return classStr.includes('highlight-target');
     };
 
     return {
       // Headings
-      h1: ({ node, children, className = '', ...props }) => {
-        const isMatched = isTargetHighlighted(className, node);
+      h1: ({ children, className = '', ...props }) => {
+        const isMatched = isTargetHighlighted(className);
         return (
           <h1
             {...props}
@@ -311,8 +550,8 @@ export const NoteSplitViewer: React.FC<NoteSplitViewerProps> = ({
           </h1>
         );
       },
-      h2: ({ node, children, className = '', ...props }) => {
-        const isMatched = isTargetHighlighted(className, node);
+      h2: ({ children, className = '', ...props }) => {
+        const isMatched = isTargetHighlighted(className);
         return (
           <h2
             {...props}
@@ -324,8 +563,8 @@ export const NoteSplitViewer: React.FC<NoteSplitViewerProps> = ({
           </h2>
         );
       },
-      h3: ({ node, children, className = '', ...props }) => {
-        const isMatched = isTargetHighlighted(className, node);
+      h3: ({ children, className = '', ...props }) => {
+        const isMatched = isTargetHighlighted(className);
         return (
           <h3
             {...props}
@@ -337,8 +576,8 @@ export const NoteSplitViewer: React.FC<NoteSplitViewerProps> = ({
           </h3>
         );
       },
-      h4: ({ node, children, className = '', ...props }) => {
-        const isMatched = isTargetHighlighted(className, node);
+      h4: ({ children, className = '', ...props }) => {
+        const isMatched = isTargetHighlighted(className);
         return (
           <h4
             {...props}
@@ -350,8 +589,8 @@ export const NoteSplitViewer: React.FC<NoteSplitViewerProps> = ({
           </h4>
         );
       },
-      h5: ({ node, children, className = '', ...props }) => {
-        const isMatched = isTargetHighlighted(className, node);
+      h5: ({ children, className = '', ...props }) => {
+        const isMatched = isTargetHighlighted(className);
         return (
           <h5
             {...props}
@@ -363,8 +602,8 @@ export const NoteSplitViewer: React.FC<NoteSplitViewerProps> = ({
           </h5>
         );
       },
-      h6: ({ node, children, className = '', ...props }) => {
-        const isMatched = isTargetHighlighted(className, node);
+      h6: ({ children, className = '', ...props }) => {
+        const isMatched = isTargetHighlighted(className);
         return (
           <h6
             {...props}
@@ -378,8 +617,8 @@ export const NoteSplitViewer: React.FC<NoteSplitViewerProps> = ({
       },
 
       // Paragraphs & Quotes
-      p: ({ node, children, className = '', ...props }) => {
-        const isMatched = isTargetHighlighted(className, node);
+      p: ({ children, className = '', ...props }) => {
+        const isMatched = isTargetHighlighted(className);
         return (
           <p
             {...props}
@@ -391,8 +630,8 @@ export const NoteSplitViewer: React.FC<NoteSplitViewerProps> = ({
           </p>
         );
       },
-      blockquote: ({ node, children, className = '', ...props }) => {
-        const isMatched = isTargetHighlighted(className, node);
+      blockquote: ({ children, className = '', ...props }) => {
+        const isMatched = isTargetHighlighted(className);
         return (
           <blockquote
             {...props}
@@ -406,8 +645,8 @@ export const NoteSplitViewer: React.FC<NoteSplitViewerProps> = ({
       },
 
       // Lists
-      ul: ({ node, children, className = '', ...props }) => {
-        const isMatched = isTargetHighlighted(className, node);
+      ul: ({ children, className = '', ...props }) => {
+        const isMatched = isTargetHighlighted(className);
         return (
           <ul
             {...props}
@@ -419,8 +658,8 @@ export const NoteSplitViewer: React.FC<NoteSplitViewerProps> = ({
           </ul>
         );
       },
-      ol: ({ node, children, className = '', ...props }) => {
-        const isMatched = isTargetHighlighted(className, node);
+      ol: ({ children, className = '', ...props }) => {
+        const isMatched = isTargetHighlighted(className);
         return (
           <ol
             {...props}
@@ -432,8 +671,8 @@ export const NoteSplitViewer: React.FC<NoteSplitViewerProps> = ({
           </ol>
         );
       },
-      li: ({ node, children, className = '', ...props }) => {
-        const isMatched = isTargetHighlighted(className, node);
+      li: ({ children, className = '', ...props }) => {
+        const isMatched = isTargetHighlighted(className);
         return (
           <li
             {...props}
@@ -447,25 +686,25 @@ export const NoteSplitViewer: React.FC<NoteSplitViewerProps> = ({
       },
 
       // GFM Tables
-      table: ({ node, children, className = '', ...props }) => (
+      table: ({ children, className = '', ...props }) => (
         <div className="overflow-x-auto my-3 rounded-xl border border-slate-800 shadow-md">
           <table {...props} className={`w-full text-left border-collapse text-xs ${className}`}>
             {children}
           </table>
         </div>
       ),
-      thead: ({ node, children, className = '', ...props }) => (
+      thead: ({ children, className = '', ...props }) => (
         <thead {...props} className={`bg-slate-950/80 text-slate-200 border-b border-slate-800 font-semibold ${className}`}>
           {children}
         </thead>
       ),
-      tbody: ({ node, children, className = '', ...props }) => (
+      tbody: ({ children, className = '', ...props }) => (
         <tbody {...props} className={`divide-y divide-slate-800/60 bg-slate-900/40 ${className}`}>
           {children}
         </tbody>
       ),
-      tr: ({ node, children, className = '', ...props }) => {
-        const isMatched = isNodeMatched(node, target);
+      tr: ({ children, className = '', ...props }) => {
+        const isMatched = isTargetHighlighted(className);
         return (
           <tr
             {...props}
@@ -479,20 +718,20 @@ export const NoteSplitViewer: React.FC<NoteSplitViewerProps> = ({
           </tr>
         );
       },
-      th: ({ node, children, className = '', ...props }) => (
+      th: ({ children, className = '', ...props }) => (
         <th {...props} className={`px-3 py-2 text-slate-300 font-medium text-[11px] ${className}`}>
           {children}
         </th>
       ),
-      td: ({ node, children, className = '', ...props }) => (
+      td: ({ children, className = '', ...props }) => (
         <td {...props} className={`px-3 py-2 text-slate-300 text-xs ${className}`}>
           {children}
         </td>
       ),
 
       // Code blocks & inline code
-      pre: ({ node, children, className = '', ...props }) => {
-        const isMatched = isNodeMatched(node, target);
+      pre: ({ children, className = '', ...props }) => {
+        const isMatched = isTargetHighlighted(className);
         return (
           <pre
             {...props}
@@ -506,7 +745,7 @@ export const NoteSplitViewer: React.FC<NoteSplitViewerProps> = ({
           </pre>
         );
       },
-      code: ({ node, className = '', children, ...props }) => {
+      code: ({ className = '', children, ...props }) => {
         const isInline = !className?.includes('language-') && !String(children).includes('\n');
         if (isInline) {
           return (
@@ -526,17 +765,17 @@ export const NoteSplitViewer: React.FC<NoteSplitViewerProps> = ({
       },
 
       // Typography
-      strong: ({ node, children, className = '', ...props }) => (
+      strong: ({ children, className = '', ...props }) => (
         <strong {...props} className={`font-bold text-amber-200 ${className}`}>
           {children}
         </strong>
       ),
-      em: ({ node, children, className = '', ...props }) => (
+      em: ({ children, className = '', ...props }) => (
         <em {...props} className={`italic text-slate-200 ${className}`}>
           {children}
         </em>
       ),
-      a: ({ node, children, className = '', ...props }) => (
+      a: ({ children, className = '', ...props }) => (
         <a
           {...props}
           target="_blank"
@@ -546,19 +785,19 @@ export const NoteSplitViewer: React.FC<NoteSplitViewerProps> = ({
           {children}
         </a>
       ),
-      hr: ({ node, className = '', ...props }) => (
+      hr: ({ className = '', ...props }) => (
         <hr {...props} className={`my-4 border-slate-800 ${className}`} />
       ),
       // Math display container highlight support
-      span: ({ node, children, className = '', ...props }) => {
+      span: ({ children, className = '', ...props }) => {
         const classStr = Array.isArray(className) ? className.join(' ') : String(className || '');
-        const isMatched = isTargetHighlighted(classStr, node);
+        const isMatched = isTargetHighlighted(classStr);
         return (
           <span
             {...props}
             className={`${classStr} ${
               isMatched
-                ? 'highlight-target block my-2 p-2 bg-amber-400/20 border-l-4 border-amber-400 text-amber-100 shadow-lg ring-1 ring-amber-400/30 rounded-r-lg'
+                ? 'highlight-target bg-amber-400/20 text-amber-100 rounded px-1'
                 : ''
             }`.trim()}
           >
@@ -566,9 +805,9 @@ export const NoteSplitViewer: React.FC<NoteSplitViewerProps> = ({
           </span>
         );
       },
-      div: ({ node, children, className = '', ...props }) => {
+      div: ({ children, className = '', ...props }) => {
         const classStr = Array.isArray(className) ? className.join(' ') : String(className || '');
-        const isMatched = isTargetHighlighted(classStr, node);
+        const isMatched = isTargetHighlighted(classStr);
         return (
           <div
             {...props}
@@ -583,7 +822,27 @@ export const NoteSplitViewer: React.FC<NoteSplitViewerProps> = ({
         );
       },
     };
-  }, [target]);
+  }, []);
+  const memoizedMarkdown = useMemo(() => {
+    if (!normalizedNote) {
+      return (
+        <div className="flex items-center justify-center h-40 text-slate-500 italic">
+          暂无笔记内容
+        </div>
+      );
+    }
+    return (
+      <div className="space-y-1">
+        <ReactMarkdown
+          remarkPlugins={remarkPlugins}
+          rehypePlugins={rehypePlugins}
+          components={components}
+        >
+          {normalizedNote}
+        </ReactMarkdown>
+      </div>
+    );
+  }, [normalizedNote, rehypePlugins, remarkPlugins, components]);
 
   if (!isOpen) {
     return (
@@ -669,18 +928,15 @@ export const NoteSplitViewer: React.FC<NoteSplitViewerProps> = ({
       )}
 
       {/* Search in note */}
-      <div className="p-3 border-b border-slate-800/60">
-        <div className="relative">
-          <Search className="w-3.5 h-3.5 absolute left-3 top-2.5 text-slate-500" />
-          <input
-            type="text"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            placeholder="在原笔记中快速查找..."
-            className="w-full pl-8 pr-3 py-1.5 bg-slate-950/80 border border-slate-800 rounded-lg text-xs text-slate-200 placeholder-slate-600 focus:outline-none focus:border-indigo-500"
-          />
-        </div>
-      </div>
+      <NoteSearchBar
+        onSearchChange={handleSearchChange}
+        searchQuery={debouncedSearchQuery}
+        matchCount={matchCount}
+        activeMatchIndex={activeMatchIndex}
+        onNextMatch={handleNextMatch}
+        onPrevMatch={handlePrevMatch}
+        onClear={handleClearSearch}
+      />
 
       {/* Clean Markdown & LaTeX Document Viewer */}
       <div 
@@ -688,24 +944,14 @@ export const NoteSplitViewer: React.FC<NoteSplitViewerProps> = ({
         className="flex-1 p-5 overflow-y-auto text-xs text-slate-200 select-text leading-relaxed"
       >
         {viewMode === 'rendered' ? (
-          normalizedNote ? (
-            <div className="space-y-1">
-              <ReactMarkdown
-                remarkPlugins={[remarkMath, remarkGfm]}
-                rehypePlugins={rehypePlugins}
-                components={components}
-              >
-                {normalizedNote}
-              </ReactMarkdown>
-            </div>
-          ) : (
-            <div className="flex items-center justify-center h-40 text-slate-500 italic">
-              暂无笔记内容
-            </div>
-          )
+          memoizedMarkdown
         ) : (
           <pre className="font-mono text-[11px] text-slate-300 whitespace-pre-wrap leading-relaxed">
-            {rawNote}
+            {rawLines.map((line, idx) => (
+              <span key={idx} className="note-raw-line block min-h-[1.25em]">
+                {line || '\u00A0'}
+              </span>
+            ))}
           </pre>
         )}
       </div>

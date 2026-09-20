@@ -31,3 +31,18 @@
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   font-size: 0.9em;
 }
+
+/* Note search match highlighting */
+.note-search-match {
+  background-color: rgba(251, 191, 36, 0.2);
+  border-left: 2px solid #fbbf24;
+  padding-left: 0.5rem;
+  border-top-right-radius: 0.25rem;
+  border-bottom-right-radius: 0.25rem;
+  transition: all 150ms ease-in-out;
+}
+
+.note-search-match-active {
+  box-shadow: 0 0 0 2px #818cf8;
+  background-color: rgba(251, 191, 36, 0.35);
+}

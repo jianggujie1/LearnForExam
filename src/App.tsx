@@ -17,7 +17,12 @@ import { FlashcardReview } from './components/FlashcardReview';
 import { QuizSession } from './components/QuizSession';
 import { ErrorNotebook } from './components/ErrorNotebook';
 import { SettingsModal } from './components/SettingsModal';
-import { NoteSplitViewer, computeSimilarity } from './components/NoteSplitViewer';
+import { NoteSplitViewer } from './components/NoteSplitViewer';
+import {
+  findCourseAndTopicForQuestion,
+  findCourseForQuote,
+  computeQuoteInDocScore
+} from './utils/courseMatcher';
 import { DeleteConfirmModal } from './components/DeleteConfirmModal';
 import { 
   GraduationCap, 
@@ -52,7 +57,23 @@ export function App() {
     const saved = loadSavedCourses();
     setCourses(saved);
     const savedErrors = loadSavedErrors();
-    setErrorQuestions(savedErrors);
+    let hasRepaired = false;
+    const repairedErrors = savedErrors.map((err) => {
+      const { course, topic } = findCourseAndTopicForQuestion(err, saved);
+      if (course && (err.courseId !== course.id || !err.courseId)) {
+        hasRepaired = true;
+        return {
+          ...err,
+          courseId: course.id,
+          topicId: topic?.id || err.topicId,
+        };
+      }
+      return err;
+    });
+    if (hasRepaired) {
+      saveErrors(repairedErrors);
+    }
+    setErrorQuestions(repairedErrors);
     const lastActive = loadActiveCourseId();
     if (lastActive && saved.some((c) => c.id === lastActive)) {
       setActiveCourseId(lastActive);
@@ -90,28 +111,36 @@ export function App() {
   };
 
   const handleLocateQuote = (quote: string, topicId?: string, courseId?: string) => {
-    let targetCourseId = courseId;
-    if (!targetCourseId && topicId) {
-      targetCourseId = courses.find((c) => c.topics.some((t) => t.id === topicId))?.id;
-    }
-    if (!targetCourseId && quote) {
-      let bestScore = -1;
-      let bestCourseId: string | undefined;
-      for (const c of courses) {
-        const score = computeSimilarity(c.rawNote, quote);
-        if (score > bestScore) {
-          bestScore = score;
-          bestCourseId = c.id;
+    let targetCourse: CourseSet | undefined;
+    if (courseId) {
+      targetCourse = courses.find((c) => c.id === courseId);
+      if (targetCourse && quote && quote.trim()) {
+        const clean = quote.trim();
+        const score = computeQuoteInDocScore(targetCourse.rawNote, clean);
+        if (score < 0.25) {
+          const betterCourse = findCourseForQuote(clean, courses, courseId);
+          if (betterCourse) {
+            targetCourse = betterCourse;
+          }
         }
-      }
-      if (bestScore >= 0.25) {
-        targetCourseId = bestCourseId;
       }
     }
 
-    if (targetCourseId && targetCourseId !== activeCourseId) {
-      setActiveCourseId(targetCourseId);
-      saveActiveCourseId(targetCourseId);
+    if (!targetCourse && quote) {
+      targetCourse = findCourseForQuote(quote, courses, activeCourseId);
+    }
+
+    if (!targetCourse && topicId) {
+      targetCourse = courses.find((c) => c.topics.some((t) => t.id === topicId));
+    }
+
+    if (!targetCourse) {
+      targetCourse = activeCourse || courses[0];
+    }
+
+    if (targetCourse && targetCourse.id !== activeCourseId) {
+      setActiveCourseId(targetCourse.id);
+      saveActiveCourseId(targetCourse.id);
     }
 
     setHighlightQuote(quote);
@@ -134,29 +163,81 @@ export function App() {
     saveCourses(updated);
   };
 
-  const handleRecordAnswer = (questionId: string, answer: string | number, isCorrect: boolean) => {
-    if (!isCorrect) {
-      const searchCourses = activeCourse ? [activeCourse] : courses;
-      for (const course of searchCourses) {
-        for (const topic of course.topics) {
-          const q = topic.quizzes.find((item) => item.id === questionId);
-          if (q) {
-            setErrorQuestions((prev) => {
-              if (prev.some((e) => e.id === questionId)) return prev;
-              const updatedQuestion: QuizQuestion = {
-                ...q,
-                userAnswer: answer,
-                isCorrect: false,
-              };
-              const updated = [updatedQuestion, ...prev];
-              saveErrors(updated);
-              return updated;
-            });
-            return;
+  const handleRecordAnswer = (
+    questionOrId: QuizQuestion | string,
+    answer: string | number,
+    isCorrect: boolean
+  ) => {
+    if (isCorrect) return;
+
+    let targetQuestion: QuizQuestion | undefined;
+    let targetCourseId = activeCourse?.id;
+    let targetTopicId = currentTopic?.id;
+
+    if (typeof questionOrId === 'object' && questionOrId !== null) {
+      targetQuestion = questionOrId;
+      if (questionOrId.courseId) {
+        targetCourseId = questionOrId.courseId;
+      }
+      if (questionOrId.topicId) {
+        targetTopicId = questionOrId.topicId;
+      }
+    } else {
+      const qId = questionOrId;
+      if (activeCourse) {
+        for (const topic of activeCourse.topics) {
+          const found = topic.quizzes.find((item) => item.id === qId);
+          if (found) {
+            targetQuestion = found;
+            targetCourseId = activeCourse.id;
+            targetTopicId = topic.id;
+            break;
           }
         }
       }
+      if (!targetQuestion) {
+        for (const course of courses) {
+          for (const topic of course.topics) {
+            const found = topic.quizzes.find((item) => item.id === qId);
+            if (found) {
+              targetQuestion = found;
+              targetCourseId = course.id;
+              targetTopicId = topic.id;
+              break;
+            }
+          }
+          if (targetQuestion) break;
+        }
+      }
     }
+
+    if (!targetQuestion) return;
+
+    const resolvedCourseId = targetCourseId || activeCourse?.id;
+    const resolvedTopicId = targetTopicId || targetQuestion.topicId;
+
+    setErrorQuestions((prev) => {
+      if (
+        prev.some(
+          (e) =>
+            (e.courseId === resolvedCourseId && e.id === targetQuestion!.id) ||
+            (resolvedCourseId && e.courseId === resolvedCourseId && e.prompt === targetQuestion!.prompt) ||
+            (e.prompt.trim() === targetQuestion!.prompt.trim())
+        )
+      ) {
+        return prev;
+      }
+      const updatedQuestion: QuizQuestion = {
+        ...targetQuestion!,
+        courseId: resolvedCourseId,
+        topicId: resolvedTopicId,
+        userAnswer: answer,
+        isCorrect: false,
+      };
+      const updated = [updatedQuestion, ...prev];
+      saveErrors(updated);
+      return updated;
+    });
   };
 
   const handleClearError = (questionId: string) => {
@@ -179,13 +260,15 @@ export function App() {
     setCourses(updated);
     saveCourses(updated);
 
-    // Clean up associated error questions
-    const topicIds = new Set(courseToDelete.topics.map((t) => t.id));
-    const quizIds = new Set(courseToDelete.topics.flatMap((t) => t.quizzes.map((q) => q.id)));
+    // Clean up associated error questions accurately without false-matching other courses
     setErrorQuestions((prev) => {
-      const cleaned = prev.filter(
-        (q) => !quizIds.has(q.id) && !(q.topicId && topicIds.has(q.topicId))
-      );
+      const cleaned = prev.filter((q) => {
+        if (q.courseId) {
+          return q.courseId !== targetId;
+        }
+        const { course } = findCourseAndTopicForQuestion(q, courses);
+        return course?.id !== targetId;
+      });
       saveErrors(cleaned);
       return cleaned;
     });
@@ -369,7 +452,7 @@ export function App() {
           <FlashcardReview
             cards={currentTopic.flashcards}
             onUpdateCardMastery={handleUpdateCardMastery}
-            onLocateQuote={handleLocateQuote}
+            onLocateQuote={(quote, topicId, courseId) => handleLocateQuote(quote, topicId, courseId || activeCourse?.id)}
             onFinish={() => setCurrentView('roadmap')}
           />
         )}
@@ -378,7 +461,7 @@ export function App() {
           <QuizSession
             questions={currentTopic.quizzes}
             onRecordAnswer={handleRecordAnswer}
-            onLocateQuote={handleLocateQuote}
+            onLocateQuote={(quote, topicId, courseId) => handleLocateQuote(quote, topicId, courseId || activeCourse?.id)}
             onFinish={() => setCurrentView('roadmap')}
           />
         )}

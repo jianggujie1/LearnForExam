@@ -2,6 +2,7 @@ import React from 'react';
 import { QuizQuestion, CourseSet } from '../types';
 import { FormattedMathText } from './FormattedMathText';
 import { AlertOctagon, CheckCircle2, Quote, BookOpen } from 'lucide-react';
+import { findCourseAndTopicForQuestion } from '../utils/courseMatcher';
 
 interface ErrorNotebookProps {
   errors: QuizQuestion[];
@@ -44,17 +45,7 @@ export const ErrorNotebook: React.FC<ErrorNotebookProps> = ({
 
       <div className="space-y-4">
         {errors.map((q, idx) => {
-          let relatedCourse = courses.find((c) =>
-            c.topics.some((t) => t.quizzes.some((quiz) => quiz.id === q.id) || (q.topicId && t.id === q.topicId))
-          );
-          let relatedTopic = relatedCourse?.topics.find((t) =>
-            t.quizzes.some((quiz) => quiz.id === q.id) || (q.topicId && t.id === q.topicId)
-          );
-
-          if (!relatedCourse && q.quoteSource) {
-            relatedCourse = courses.find((c) => c.rawNote.includes(q.quoteSource!));
-            relatedTopic = relatedCourse?.topics[0];
-          }
+          const { course: relatedCourse, topic: relatedTopic } = findCourseAndTopicForQuestion(q, courses);
           return (
             <div
               key={q.id}
@@ -128,7 +119,7 @@ export const ErrorNotebook: React.FC<ErrorNotebookProps> = ({
                 <div className="mt-3">
                   <button
                     type="button"
-                    onClick={() => onLocateQuote?.(q.quoteSource || '', q.topicId, relatedCourse?.id)}
+                    onClick={() => onLocateQuote?.(q.quoteSource || '', relatedTopic?.id || q.topicId, relatedCourse?.id)}
                     className="flex items-center gap-1.5 text-xs text-indigo-400 hover:text-indigo-300 font-medium py-1 px-2 rounded hover:bg-indigo-500/10 transition-colors cursor-pointer"
                   >
                     <Quote className="w-3.5 h-3.5" />

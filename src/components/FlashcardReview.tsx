@@ -7,7 +7,7 @@ interface FlashcardReviewProps {
   cards: Flashcard[];
   onUpdateCardMastery: (cardId: string, mastery: Flashcard['mastery']) => void;
   onFinish?: () => void;
-  onLocateQuote?: (quote: string) => void;
+  onLocateQuote?: (quote: string, topicId?: string, courseId?: string) => void;
 }
 
 export const FlashcardReview: React.FC<FlashcardReviewProps> = ({
@@ -99,7 +99,7 @@ export const FlashcardReview: React.FC<FlashcardReviewProps> = ({
                   type="button"
                   onClick={(e) => {
                     e.stopPropagation();
-                    onLocateQuote?.(currentCard.quoteSource || '');
+                    onLocateQuote?.(currentCard.quoteSource || '', currentCard.topicId, currentCard.courseId);
                   }}
                   className="flex items-center gap-1.5 text-xs text-indigo-400 hover:text-indigo-300 font-medium py-1 px-2 rounded hover:bg-indigo-500/10 transition-colors"
                 >

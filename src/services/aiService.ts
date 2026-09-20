@@ -164,25 +164,29 @@ export async function generateCourseSetFromNote(
 
   try {
     const parsed = JSON.parse(cleanJsonStr);
+    const courseId = `course-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
     const topics = (parsed.topics || []).map((t: any, tIdx: number) => {
-      const topicId = t.id || `topic-${tIdx + 1}`;
+      const topicId = `${courseId}-topic-${tIdx + 1}`;
       return {
         ...t,
         id: topicId,
+        courseId,
         flashcards: (t.flashcards || []).map((f: any, fIdx: number) => ({
           ...f,
-          id: f.id || `fc-${tIdx + 1}-${fIdx + 1}`,
+          id: `${courseId}-fc-${tIdx + 1}-${fIdx + 1}`,
           topicId,
+          courseId,
         })),
         quizzes: (t.quizzes || []).map((q: any, qIdx: number) => ({
           ...q,
-          id: q.id || `qz-${tIdx + 1}-${qIdx + 1}`,
+          id: `${courseId}-qz-${tIdx + 1}-${qIdx + 1}`,
           topicId,
+          courseId,
         })),
       };
     });
     return {
-      id: `course-${Date.now()}`,
+      id: courseId,
       title: parsed.title || courseTitle || '期末复习专题',
       rawNote,
       createdAt: Date.now(),
@@ -195,29 +199,34 @@ export async function generateCourseSetFromNote(
 }
 
 function generateMockCourseSet(rawNote: string, courseTitle: string): CourseSet {
+  const courseId = `course-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+  const topic1Id = `${courseId}-topic-1`;
+  const topic2Id = `${courseId}-topic-2`;
   return {
-    id: `course-${Date.now()}`,
+    id: courseId,
     title: courseTitle || "高等数学与物理基础 (演示模式)",
     rawNote,
     createdAt: Date.now(),
     topics: [
       {
-        id: "topic-1",
+        id: topic1Id,
         title: "微积分基础与极限计算",
         summary: "涵盖重要极限公式、等价无穷小代换及洛必达法则使用条件。",
         order: 1,
         flashcards: [
           {
-            id: "fc-1-1",
-            topicId: "topic-1",
+            id: `${courseId}-fc-1-1`,
+            topicId: topic1Id,
+            courseId,
             front: "第一个重要极限公式是什么？其几何意义？",
             back: "$\\lim_{x \\to 0} \\frac{\\sin x}{x} = 1$。表明在零点附近，正弦函数与自变量具有等价无穷小的线性逼近性质。",
             quoteSource: "第一重要极限：lim(x->0) sinx/x = 1，考前必背",
             mastery: "unseen"
           },
           {
-            id: "fc-1-2",
-            topicId: "topic-1",
+            id: `${courseId}-fc-1-2`,
+            topicId: topic1Id,
+            courseId,
             front: "常用等价无穷小代换公式（当 $x \\to 0$ 时）",
             back: "1. $\\sin x \\sim x$\n2. $\\tan x \\sim x$\n3. $e^x - 1 \\sim x$\n4. $1 - \\cos x \\sim \\frac{1}{2}x^2$",
             quoteSource: "1-cosx 经常忘记乘 1/2，易错点！",
@@ -226,8 +235,9 @@ function generateMockCourseSet(rawNote: string, courseTitle: string): CourseSet 
         ],
         quizzes: [
           {
-            id: "qz-1-1",
-            topicId: "topic-1",
+            id: `${courseId}-qz-1-1`,
+            topicId: topic1Id,
+            courseId,
             type: "single_choice",
             prompt: "当 $x \\to 0$ 时，下列与 $x^2$ 是等价无穷小的是：",
             options: [
@@ -241,8 +251,9 @@ function generateMockCourseSet(rawNote: string, courseTitle: string): CourseSet 
             quoteSource: "1-cosx 等价于 0.5 x^2"
           },
           {
-            id: "qz-1-2",
-            topicId: "topic-1",
+            id: `${courseId}-qz-1-2`,
+            topicId: topic1Id,
+            courseId,
             type: "cloze",
             prompt: "完成洛必达法则使用前提条件",
             clozeTemplate: "洛必达法则仅适用于 {blank} 型或 $\\frac{\\infty}{\\infty}$ 型未定式求极限。",
@@ -253,14 +264,15 @@ function generateMockCourseSet(rawNote: string, courseTitle: string): CourseSet 
         ]
       },
       {
-        id: "topic-2",
+        id: topic2Id,
         title: "经典力学与动力学基本方程",
         summary: "牛顿第二定律、动量守恒与机械能守恒条件。",
         order: 2,
         flashcards: [
           {
-            id: "fc-2-1",
-            topicId: "topic-2",
+            id: `${courseId}-fc-2-1`,
+            topicId: topic2Id,
+            courseId,
             front: "质点系动量守恒定律的充要条件是什么？",
             back: "系统所受**合外力为零**（$\\sum \\vec{F}_{\\text{ext}} = 0$）。内力不改变系统总动量。",
             quoteSource: "动量守恒：系统合外力等于0，内力无论多大都不影响总动量。",
@@ -269,8 +281,9 @@ function generateMockCourseSet(rawNote: string, courseTitle: string): CourseSet 
         ],
         quizzes: [
           {
-            id: "qz-2-1",
-            topicId: "topic-2",
+            id: `${courseId}-qz-2-1`,
+            topicId: topic2Id,
+            courseId,
             type: "single_choice",
             prompt: "关于机械能守恒定律，下列说法正确的是：",
             options: [

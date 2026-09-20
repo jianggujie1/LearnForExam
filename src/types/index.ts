@@ -8,6 +8,7 @@ export interface NoteSource {
 export interface Flashcard {
   id: string;
   topicId: string;
+  courseId?: string;
   front: string; // Question or Concept (supports LaTeX $...$)
   back: string;  // Answer, explanation or formula
   quoteSource?: string; // Verbatim snippet from note
@@ -19,6 +20,7 @@ export type QuestionType = 'single_choice' | 'cloze';
 export interface QuizQuestion {
   id: string;
   topicId: string;
+  courseId?: string;
   type: QuestionType;
   prompt: string; // Question body
   options?: string[]; // 4 options for single_choice

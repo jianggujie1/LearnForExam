@@ -7,8 +7,8 @@ import confetti from 'canvas-confetti';
 interface QuizSessionProps {
   questions: QuizQuestion[];
   onFinish?: (score: number, total: number) => void;
-  onRecordAnswer?: (questionId: string, answer: string | number, isCorrect: boolean) => void;
-  onLocateQuote?: (quote: string) => void;
+  onRecordAnswer?: (question: QuizQuestion | string, answer: string | number, isCorrect: boolean) => void;
+  onLocateQuote?: (quote: string, topicId?: string, courseId?: string) => void;
 }
 
 export const QuizSession: React.FC<QuizSessionProps> = ({
@@ -77,7 +77,7 @@ export const QuizSession: React.FC<QuizSessionProps> = ({
       setScore(score + 1);
       confetti({ particleCount: 40, spread: 60, origin: { y: 0.8 } });
     }
-    onRecordAnswer?.(currentQ.id, optionIdx, correct);
+    onRecordAnswer?.(currentQ, optionIdx, correct);
   };
 
   const handleSubmitCloze = (e: React.FormEvent) => {
@@ -89,7 +89,7 @@ export const QuizSession: React.FC<QuizSessionProps> = ({
       setScore(score + 1);
       confetti({ particleCount: 40, spread: 60, origin: { y: 0.8 } });
     }
-    onRecordAnswer?.(currentQ.id, clozeInput.trim(), correct);
+    onRecordAnswer?.(currentQ, clozeInput.trim(), correct);
   };
 
   const handleNext = () => {
@@ -284,7 +284,7 @@ export const QuizSession: React.FC<QuizSessionProps> = ({
               <div>
                 <button
                   type="button"
-                  onClick={() => onLocateQuote?.(currentQ.quoteSource || '')}
+                  onClick={() => onLocateQuote?.(currentQ.quoteSource || '', currentQ.topicId, currentQ.courseId)}
                   className="flex items-center gap-1.5 text-xs text-indigo-400 hover:text-indigo-300 font-medium py-1 px-2 rounded hover:bg-indigo-500/10 transition-colors cursor-pointer"
                 >
                   <Quote className="w-3.5 h-3.5" />

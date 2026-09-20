@@ -141,8 +141,20 @@ export function rehypeBestMatchPlugin(options?: { target?: string }) {
     if (!targetQuote || !targetQuote.trim()) return;
     const cleanTarget = targetQuote.trim();
 
-    const elements = tree.children?.filter((c: any) => c.type === 'element') || [];
-    if (elements.length === 0) return;
+    const rawElements = tree.children?.filter((c: any) => c.type === 'element') || [];
+    if (rawElements.length === 0) return;
+
+    const elements: any[] = [];
+    for (const el of rawElements) {
+      if (el.tagName === 'ul' || el.tagName === 'ol') {
+        const lis = (el.children || []).filter((c: any) => c.type === 'element' && c.tagName === 'li');
+        if (lis.length > 0) {
+          elements.push(...lis);
+          continue;
+        }
+      }
+      elements.push(el);
+    }
 
     let bestScore = -1;
     let bestNodes: any[] = [];
